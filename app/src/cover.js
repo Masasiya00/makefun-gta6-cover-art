@@ -1,15 +1,16 @@
 // VICE HEAT: Leonida Cover Studio — canvas cover renderer.
-// All art is original (hand-drawn SVG scenes in samples/) or user uploads.
+// Sample art is freely-licensed photography (see app/SOURCES.md), pre-graded
+// warm Vice City sunset; or user uploads.
 // Fonts: vendored OFL Anton (fonts/Anton-Regular.ttf), never a Rockstar font.
 
 export const SAMPLES = [
-  { id: 'duo', file: 'samples/duo.svg', label: 'Duo Sunset', role: 'THE DUO' },
-  { id: 'beach', file: 'samples/beach.svg', label: 'Beach Sunset', role: 'VICE BEACH' },
-  { id: 'skyline', file: 'samples/skyline.svg', label: 'Neon Skyline', role: 'VICE CITY' },
-  { id: 'car', file: 'samples/car.svg', label: 'Ocean Drive', role: 'GETAWAY' },
-  { id: 'heli', file: 'samples/heli.svg', label: 'Bay Heli', role: 'AIR SUPPORT' },
-  { id: 'pool', file: 'samples/pool.svg', label: 'Poolside', role: 'POOLSIDE' },
-  { id: 'gator', file: 'samples/gator.svg', label: 'Swamp Gator', role: 'LEONIDA WILD' },
+  { id: 'duo', file: 'samples/duo.jpg', label: 'Duo Sunset', role: 'THE DUO' },
+  { id: 'beach', file: 'samples/beach.jpg', label: 'Beach Sunset', role: 'VICE BEACH' },
+  { id: 'skyline', file: 'samples/skyline.jpg', label: 'Neon Skyline', role: 'VICE CITY' },
+  { id: 'car', file: 'samples/car.jpg', label: 'Ocean Drive', role: 'GETAWAY' },
+  { id: 'heli', file: 'samples/heli.jpg', label: 'Bay Heli', role: 'AIR SUPPORT' },
+  { id: 'pool', file: 'samples/pool.jpg', label: 'Poolside', role: 'POOLSIDE' },
+  { id: 'gator', file: 'samples/gator.jpg', label: 'Swamp Gator', role: 'LEONIDA WILD' },
   { id: 'boulevard', file: 'samples/boulevard.jpg', label: 'Boulevard', role: 'BOULEVARD' },
   { id: 'pier', file: 'samples/pier.jpg', label: 'Pier', role: 'THE PIER' },
 ];
@@ -32,6 +33,10 @@ export const LAYOUTS = {
 
 // Default panel assignment: [duo centre, beach, skyline, car, heli, pool, boulevard, pier, gator]
 export const DEFAULT_PANELS = ['duo', 'beach', 'skyline', 'car', 'heli', 'pool', 'boulevard', 'pier', 'gator'];
+// Default crop offsets (fraction of panel size) so each photo is framed on its
+// subject in the 9-panel grid: the driver sits at the left edge of the car
+// photo, and the helicopter's tail at the left edge of the heli photo.
+export const DEFAULT_OFFSETS = { car: { ox: 0.10, oy: 0 }, heli: { ox: 0.12, oy: 0 } };
 export const CALLOUTS = ['THE DUO', 'VICE BEACH', 'VICE CITY', 'GETAWAY DRIVER', 'AIR SUPPORT', 'POOLSIDE', 'BOULEVARD', 'THE PIER', 'LEONIDA WILD'];
 
 export function defaultState() {
@@ -43,7 +48,7 @@ export function defaultState() {
     tagline: 'Two outlaws. One last score. No way back.',
     quote: '"The sun never sets on Vice City."',
     furniture: { seal: true, billing: true, stars: true, callouts: true },
-    panels: DEFAULT_PANELS.map((s) => ({ sample: s, img: null, zoom: 1, ox: 0, oy: 0 })),
+    panels: DEFAULT_PANELS.map((s) => ({ sample: s, img: null, zoom: 1, ox: (DEFAULT_OFFSETS[s] || {}).ox || 0, oy: (DEFAULT_OFFSETS[s] || {}).oy || 0 })),
     selected: 0,
   };
 }
@@ -94,8 +99,15 @@ function drawPhoto(ctx, img, x, y, w, h, zoom, ox, oy) {
   if (!iw || !ih) return false;
   const scale = Math.max(w / iw, h / ih) * zoom;
   const pw = iw * scale, ph = ih * scale;
-  const dx = x + (w - pw) / 2 + ox * w;
-  const dy = y + (h - ph) / 2 + oy * h;
+  let dx = x + (w - pw) / 2 + ox * w;
+  let dy = y + (h - ph) / 2 + oy * h;
+  // Never leave a gap: clamp so the photo always covers the whole cell.
+  // (A crop offset must not push the photo off the cell when it exactly fits,
+  // e.g. a wide panel at 1920x1080.)
+  dx = Math.min(dx, x);
+  dx = Math.max(dx, x + w - pw);
+  dy = Math.min(dy, y);
+  dy = Math.max(dy, y + h - ph);
   ctx.drawImage(img, dx, dy, pw, ph);
   return true;
 }
