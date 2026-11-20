@@ -35,13 +35,23 @@ from pathlib import Path
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
+def launch(pw):
+    try:
+        return pw.chromium.launch(args=["--no-sandbox", "--force-device-scale-factor=1"])
+    except Exception:
+        # The installed chromium can be newer than this playwright's default.
+        import glob, os
+        cands = sorted(glob.glob(os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux/chrome")))
+        return pw.chromium.launch(executable_path=cands[-1],
+                                  args=["--no-sandbox", "--force-device-scale-factor=1"])
+
 shots = json.loads(Path(sys.argv[1]).read_text())["shots"]
 base = sys.argv[2].rstrip("/")
 out = Path(sys.argv[3])
 out.mkdir(parents=True, exist_ok=True)
 problems = []
 with sync_playwright() as pw:
-    browser = pw.chromium.launch(args=["--no-sandbox", "--force-device-scale-factor=1"])
+    browser = launch(pw)
     for shot in shots:
         page = browser.new_page(viewport={"width": shot["width"], "height": shot["height"]})
         notes = []
@@ -63,7 +73,14 @@ with sync_playwright() as pw:
         scale = min(1.0, 1280 / max(w, h))
         if scale < 1.0:
             im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
-        im.save(out / shot["file"], quality=88)
+        # The gate caps each screenshot at 256 KiB: drop quality rather
+        # than ever handing in an oversize file.
+        target = out / shot["file"]
+        quality = 88
+        im.save(target, quality=quality)
+        while target.stat().st_size > 262144 and quality > 60:
+            quality -= 8
+            im.save(target, quality=quality)
         full.unlink()
         bad = [n for n in notes if n.startswith("error") or n.startswith("pageerror")]
         if bad:
