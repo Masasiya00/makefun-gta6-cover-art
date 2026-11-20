@@ -1,97 +1,94 @@
-<!DOCTYPE html>
-<html lang="id">
+<!doctype html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>VICE HEAT: Leonida Cover Studio</title>
-<meta name="description" content="Ubah foto apapun jadi cover art gaya GTA 6: 5 layout, 8 colour grade, role tag yang bisa diedit, export PNG 4 ukuran. Jalan offline di browser.">
-<meta name="theme-color" content="#0d0b12">
+<meta name="description" content="VICE HEAT: Leonida Cover Studio — turn any photo into a GTA 6-style cover poster. 5 layouts, 8 grades, per-panel crop, PNG export. Fully offline.">
 <link rel="icon" href="data:,">
+<title>VICE HEAT: Leonida Cover Studio</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="topbar">
   <div class="brand">
-    <span class="brand-mark">VH</span>
-    <div>
-      <h1>VICE HEAT</h1>
-      <p>Leonida Cover Studio — ubah fotomu jadi cover art gaya GTA 6</p>
-    </div>
+    <span class="brand-mark">★</span>
+    <h1>VICE HEAT</h1>
+    <span class="brand-sub">Leonida Cover Studio</span>
   </div>
-  <div class="top-actions">
-    <button id="shuffleBtn" type="button" class="shuffle" title="Acak foto tiap panel, grade, dan judul">🔀 Shuffle</button>
-    <button id="resetBtn" type="button" class="reset" title="Kembali ke cover default">Reset</button>
-    <button id="exportAllBtn" type="button" class="export-all" title="Export 4 ukuran sekaligus">Export All PNG</button>
-  </div>
+  <p class="topbar-note">Turn any photo into a GTA&nbsp;6-style cover poster. Offline — nothing you upload ever leaves this machine.</p>
 </header>
 
 <main class="layout">
-  <aside class="controls" id="controls">
+  <section class="stage" id="stage">
+    <canvas id="poster" width="1080" height="1350"></canvas>
+    <input id="roleEditor" class="role-editor" hidden maxlength="32" autocomplete="off" spellcheck="false">
+    <p class="stage-hint">Click a role label to rename it · Drag a photo to crop it · Scroll over a photo to zoom</p>
+  </section>
+
+  <aside class="editor" id="editorPanel">
     <section class="group">
-      <h2>1 · Layout</h2>
-      <div class="pick-grid" id="layoutBtns"></div>
-      <label class="field-label" for="presetSelect">Preset screenshot</label>
-      <select id="presetSelect" class="select"></select>
+      <h2>Layout</h2>
+      <div class="btn-row" id="layoutBtns"></div>
     </section>
 
     <section class="group">
-      <h2>2 · Colour Grade</h2>
-      <div class="pick-grid" id="gradeBtns"></div>
-      <label class="field-label" for="intensityRange">Intensitas grade — <span id="intensityVal">85%</span></label>
-      <input id="intensityRange" type="range" min="0" max="100" value="85" step="1">
-      <div class="range-ends"><span>0% asli</span><span>100% penuh</span></div>
+      <h2>Grade</h2>
+      <div class="btn-row" id="gradeBtns"></div>
+      <label class="slider-label">Intensity <span id="intensityVal">85%</span></label>
+      <input type="range" id="intensity" min="0" max="100" step="1" value="85">
     </section>
 
     <section class="group">
-      <h2>Judul Cover</h2>
-      <label class="field-label" for="titleInput">Teks judul</label>
-      <input id="titleInput" type="text" value="VICE HEAT" maxlength="24" autocomplete="off">
-      <label class="field-label">Posisi judul</label>
-      <div class="pick-row" id="titlePosBtns">
-        <button type="button" class="pick active" data-key="top">Atas</button>
-        <button type="button" class="pick" data-key="middle">Tengah</button>
-        <button type="button" class="pick" data-key="bottom">Bawah</button>
-      </div>
-      <label class="check"><input id="outlineToggle" type="checkbox" checked> Outline judul</label>
-      <label class="field-label" for="outlineRange">Ketebalan outline</label>
-      <input id="outlineRange" type="range" min="0" max="100" value="55" step="1">
-      <label class="field-label" for="shadowRange">Bayangan judul</label>
-      <input id="shadowRange" type="range" min="0" max="100" value="60" step="1">
+      <h2>Words</h2>
+      <label>Title <input type="text" id="titleInput" value="VICE HEAT" maxlength="24"></label>
+      <label>Subtitle <input type="text" id="subtitleInput" value="LEONIDA" maxlength="24"></label>
+      <label>Tagline <input type="text" id="taglineInput" value="WELCOME TO LEONIDA" maxlength="48"></label>
+      <label>Quote <input type="text" id="quoteInput" value="One last score. One way out." maxlength="80"></label>
     </section>
 
     <section class="group">
-      <h2>3 · Photos</h2>
-      <p class="hint">Klik panel di cover untuk memilih, lalu pilih foto sampel, upload fotomu sendiri, atau drag foto di cover untuk crop.</p>
-      <p class="panel-info" id="panelInfo">THE DUO — klik panel untuk memilih</p>
-      <label class="field-label" for="roleInput">Role tag panel terpilih (klik juga label di cover)</label>
-      <input id="roleInput" type="text" value="THE DUO" maxlength="24" autocomplete="off">
-      <div class="thumb-grid" id="sampleGrid"></div>
-      <label class="field-label" for="uploadInput">Upload foto sendiri</label>
-      <input id="uploadInput" type="file" accept="image/*">
-      <label class="field-label" for="zoomRange">Zoom foto panel terpilih</label>
-      <input id="zoomRange" type="range" min="100" max="300" value="100" step="5">
-      <div class="range-ends"><span>100%</span><span>300%</span></div>
+      <h2>Title style</h2>
+      <label>Position
+        <select id="titlePos">
+          <option value="top">Top</option>
+          <option value="middle">Middle</option>
+          <option value="bottom">Bottom</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="outlineChk" checked> Outline</label>
+      <label class="slider-label">Outline width <span id="outlineWidthVal">6px</span></label>
+      <input type="range" id="outlineWidth" min="0" max="16" step="1" value="6">
+      <label class="slider-label">Shadow <span id="shadowVal">14px</span></label>
+      <input type="range" id="shadowRange" min="0" max="40" step="1" value="14">
+    </section>
+
+    <section class="group">
+      <h2>Panels</h2>
+      <p class="group-note">Selected: <strong id="selectedPanelLabel">Panel 1</strong></p>
+      <label class="slider-label">Zoom <span id="zoomVal">100%</span></label>
+      <input type="range" id="zoomRange" min="100" max="300" step="5" value="100">
+      <div class="panel-list" id="panelList"></div>
+    </section>
+
+    <section class="group actions">
+      <button type="button" id="shuffleBtn" class="btn">🔀 Shuffle</button>
+      <button type="button" id="resetBtn" class="btn ghost">Reset</button>
     </section>
 
     <section class="group">
       <h2>Export PNG</h2>
-      <div class="export-grid" id="exportBtns"></div>
-      <p class="hint">Foto tidak pernah di-upload — semua diproses di mesinmu sendiri, offline.</p>
+      <div class="export-grid">
+        <button type="button" class="btn" data-export="1080x1080">1080 × 1080</button>
+        <button type="button" class="btn" data-export="1080x1350">1080 × 1350</button>
+        <button type="button" class="btn" data-export="1920x1080">1920 × 1080</button>
+        <button type="button" class="btn" data-export="1080x1920">1080 × 1920</button>
+      </div>
+      <button type="button" id="exportAllBtn" class="btn wide">Export all 4 sizes</button>
     </section>
+
+    <p class="fineprint">Sample photos: free-licensed (see <a href="SOURCES.md">SOURCES.md</a>). No Rockstar artwork, logo, or font. Font: Anton (SIL OFL).</p>
   </aside>
-
-  <section class="stage" id="stage">
-    <div class="stage-wrap" id="stageWrap">
-      <canvas id="coverCanvas" width="1080" height="1080" aria-label="Preview cover art"></canvas>
-      <input id="roleEditor" type="text" maxlength="24" autocomplete="off" aria-label="Edit role tag" style="display:none">
-    </div>
-    <p class="status" id="statusLine">Siap — pilih layout, grade, lalu export PNG.</p>
-  </section>
 </main>
-
-<footer class="foot">
-  <span>VICE HEAT — fan-made cover studio. Tanpa logo, artwork, atau font Rockstar Games. Font judul Anton (SIL Open Font License).</span>
-</footer>
 
 <script type="module" src="src/main.js"></script>
 </body>
