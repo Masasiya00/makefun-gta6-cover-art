@@ -13,6 +13,7 @@ import {
   panelDef,
   photoUrl,
   layoutPanels,
+  gradeFilter,
   drawCover,
   shuffleState,
 } from './cover.js';
@@ -73,9 +74,14 @@ function fitCanvas() {
     canvas.style.width = '100vw';
     canvas.style.height = '100vh';
   } else {
+    // Size from the VISIBLE viewport, not the stage box: the controls
+    // column is taller than the viewport, so the stage box is tall too and
+    // sizing from it stretched the canvas and pushed the lower role labels
+    // below the fold (unreachable by click at 1280x720).
     const stage = $('#stage');
     const box = stage.getBoundingClientRect();
-    const side = Math.max(320, Math.floor(Math.min(box.width, box.height - 8)));
+    const availH = window.innerHeight - 168;
+    const side = Math.max(320, Math.floor(Math.min(box.width, availH)));
     canvas.width = 1080;
     canvas.height = 1080;
     canvas.style.width = `${side}px`;
@@ -305,13 +311,17 @@ function openRoleEditor(g) {
   input.style.width = `${Math.max(90, sw + 24)}px`;
   input.value = g.role;
   input.dataset.panel = g.id;
+  input.dataset.openedAt = String(Date.now());
   input.focus();
   input.select();
 }
 
-function commitRoleEditor() {
+function commitRoleEditor(force = false) {
   const input = $('#roleEditor');
   if (input.style.display === 'none' || !input.dataset.panel) return;
+  // The click that opened the editor can still steal focus a moment later;
+  // ignore such an immediate blur so the editor does not commit itself shut.
+  if (!force && Date.now() - Number(input.dataset.openedAt ?? 0) < 500) return;
   const panel = state.panels.find((p) => p.id === input.dataset.panel);
   const value = input.value.trim().toUpperCase().slice(0, 24);
   if (panel && value) {
@@ -329,6 +339,9 @@ function bindCanvas() {
     const pt = canvasPoint(ev);
     const labelHit = hitLabel(pt);
     if (labelHit) {
+      // preventDefault keeps the opening click from moving focus back to
+      // the canvas (which would blur the editor and commit it instantly).
+      ev.preventDefault();
       selectedId = labelHit.id;
       openRoleEditor(labelHit);
       syncControls();
@@ -350,9 +363,10 @@ function bindCanvas() {
     const dx = ((ev.clientX - dragging.x) / r.width) * canvas.width;
     const dy = ((ev.clientY - dragging.y) / r.height) * canvas.height;
     // Convert pixel drag into pan units; the clamp in drawPhotoCover keeps
-    // the photo covering the panel at all times.
-    panel.panX += (dx / Math.max(1, g.w)) * 2;
-    panel.panY += (dy / Math.max(1, g.h)) * 2;
+    // the photo covering the panel at all times, and the state itself is
+    // clamped too so a long drag cannot wind the pan past its range.
+    panel.panX = Math.max(-1, Math.min(1, panel.panX + (dx / Math.max(1, g.w)) * 2));
+    panel.panY = Math.max(-1, Math.min(1, panel.panY + (dy / Math.max(1, g.h)) * 2));
     dragging.x = ev.clientX;
     dragging.y = ev.clientY;
     draw();
@@ -479,14 +493,20 @@ async function boot() {
       reader.readAsDataURL(file);
     });
     $('#exportAllBtn').addEventListener('click', exportAll);
+    $('#resetBtn')?.addEventListener('click', () => {
+      state = defaultState();
+      selectedId = 'duo';
+      setStatus('Direset ke cover default — grid Sunset, VICE HEAT.');
+      redraw();
+    });
     $('#roleEditor').addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter') commitRoleEditor();
+      if (ev.key === 'Enter') commitRoleEditor(true);
       if (ev.key === 'Escape') {
         $('#roleEditor').style.display = 'none';
       }
       ev.stopPropagation();
     });
-    $('#roleEditor').addEventListener('blur', commitRoleEditor);
+    $('#roleEditor').addEventListener('blur', () => commitRoleEditor(false));
     window.addEventListener('resize', () => {
       fitCanvas();
       draw();
@@ -514,6 +534,12 @@ async function boot() {
     layoutPanels: (layout, w, h) => layoutPanels(layout, w, h),
     geom: () => geom,
     shots: SHOTS,
+    gradeFilter: (grade, intensity) => gradeFilter(grade, intensity),
+    reset() {
+      state = defaultState();
+      selectedId = 'duo';
+      return redraw();
+    },
   };
   window.__viceHeatReady = true;
 }
