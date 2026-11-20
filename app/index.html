@@ -1,62 +1,95 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-<title>VICE HEAT — Leonida Cover Studio</title>
-<link rel="stylesheet" href="./style.css">
+<title>VICE HEAT: Leonida Cover Studio</title>
+<meta name="description" content="Ubah foto apapun jadi cover art gaya GTA 6: 5 layout, 8 colour grade, role tag yang bisa diedit, export PNG 4 ukuran. Jalan offline di browser.">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="app">
-  <section class="controls" aria-label="Cover controls">
-    <h1>VICE HEAT</h1>
-    <p class="sub">Leonida Cover Studio — turn any photo into a GTA&nbsp;6-style cover. All art here is original; no Rockstar artwork, logo or font.</p>
-
-    <h2>1 · Layout</h2>
-    <div id="layouts" class="row"></div>
-
-    <h2>2 · Colour grade</h2>
-    <div id="grades" class="row grades"></div>
-
-    <h2>3 · Photos</h2>
-    <p class="hint">Click a panel on the cover to select it, then pick a sample below, upload your own, or drag a photo onto the cover. Drag inside a panel to crop.</p>
-    <div id="samples" class="samples"></div>
-    <label class="upload">Upload a photo <input id="upload" type="file" accept="image/*"></label>
-    <p id="selLabel" class="sel">Panel 1 — Duo Sunset</p>
-    <label>Zoom <input id="zoom" type="range" min="1" max="3" step="0.05" value="1"></label>
-    <button id="resetCrop" type="button" class="ghost">Reset crop</button>
-
-    <h2>4 · Lettering</h2>
-    <label>Title <input id="title" type="text" maxlength="24" value="VICE HEAT"></label>
-    <label>Subtitle <input id="subtitle" type="text" maxlength="40" value="Welcome to Leonida"></label>
-    <label>Tagline <input id="tagline" type="text" maxlength="60" value="Two outlaws. One last score. No way back."></label>
-    <label>Quote <input id="quote" type="text" maxlength="60" value="&quot;The sun never sets on Vice City.&quot;"></label>
-
-    <h2>5 · Poster furniture</h2>
-    <div id="furniture" class="checks"></div>
-
-    <h2>6 · Preview size</h2>
-    <div class="row">
-      <button type="button" data-aspect data-w="1080" data-h="1080">Square</button>
-      <button type="button" data-aspect data-w="1080" data-h="1350" class="active">Portrait</button>
-      <button type="button" data-aspect data-w="1920" data-h="1080">Landscape</button>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">VH</span>
+    <div>
+      <h1>VICE HEAT</h1>
+      <p>Leonida Cover Studio — ubah fotomu jadi cover art gaya GTA 6</p>
     </div>
+  </div>
+  <div class="top-actions">
+    <button id="shuffleBtn" type="button" class="shuffle" title="Acak foto tiap panel, grade, dan judul">🔀 Shuffle</button>
+    <button id="exportAllBtn" type="button" class="export-all" title="Export 4 ukuran sekaligus">Export All PNG</button>
+  </div>
+</header>
 
-    <h2>7 · Export PNG</h2>
-    <button id="exportAll" type="button" class="primary">Export all 3 sizes</button>
-    <div class="row">
-      <button id="exportSquare" type="button">1080×1080</button>
-      <button id="exportPortrait" type="button">1080×1350</button>
-      <button id="exportWide" type="button">1920×1080</button>
+<main class="layout">
+  <aside class="controls" id="controls">
+    <section class="group">
+      <h2>1 · Layout</h2>
+      <div class="pick-grid" id="layoutBtns"></div>
+      <label class="field-label" for="presetSelect">Preset screenshot</label>
+      <select id="presetSelect" class="select"></select>
+    </section>
+
+    <section class="group">
+      <h2>2 · Colour Grade</h2>
+      <div class="pick-grid" id="gradeBtns"></div>
+      <label class="field-label" for="intensityRange">Intensitas grade — <span id="intensityVal">85%</span></label>
+      <input id="intensityRange" type="range" min="0" max="100" value="85" step="1">
+      <div class="range-ends"><span>0% asli</span><span>100% penuh</span></div>
+    </section>
+
+    <section class="group">
+      <h2>Judul Cover</h2>
+      <label class="field-label" for="titleInput">Teks judul</label>
+      <input id="titleInput" type="text" value="VICE HEAT" maxlength="24" autocomplete="off">
+      <label class="field-label">Posisi judul</label>
+      <div class="pick-row" id="titlePosBtns">
+        <button type="button" class="pick active" data-key="top">Atas</button>
+        <button type="button" class="pick" data-key="middle">Tengah</button>
+        <button type="button" class="pick" data-key="bottom">Bawah</button>
+      </div>
+      <label class="check"><input id="outlineToggle" type="checkbox" checked> Outline judul</label>
+      <label class="field-label" for="outlineRange">Ketebalan outline</label>
+      <input id="outlineRange" type="range" min="0" max="100" value="55" step="1">
+      <label class="field-label" for="shadowRange">Bayangan judul</label>
+      <input id="shadowRange" type="range" min="0" max="100" value="60" step="1">
+    </section>
+
+    <section class="group">
+      <h2>3 · Photos</h2>
+      <p class="hint">Klik panel di cover untuk memilih, lalu pilih foto sampel, upload fotomu sendiri, atau drag foto di cover untuk crop.</p>
+      <p class="panel-info" id="panelInfo">THE DUO — klik panel untuk memilih</p>
+      <label class="field-label" for="roleInput">Role tag panel terpilih (klik juga label di cover)</label>
+      <input id="roleInput" type="text" value="THE DUO" maxlength="24" autocomplete="off">
+      <div class="thumb-grid" id="sampleGrid"></div>
+      <label class="field-label" for="uploadInput">Upload foto sendiri</label>
+      <input id="uploadInput" type="file" accept="image/*">
+      <label class="field-label" for="zoomRange">Zoom foto panel terpilih</label>
+      <input id="zoomRange" type="range" min="100" max="300" value="100" step="5">
+      <div class="range-ends"><span>100%</span><span>300%</span></div>
+    </section>
+
+    <section class="group">
+      <h2>Export PNG</h2>
+      <div class="export-grid" id="exportBtns"></div>
+      <p class="hint">Foto tidak pernah di-upload — semua diproses di mesinmu sendiri, offline.</p>
+    </section>
+  </aside>
+
+  <section class="stage" id="stage">
+    <div class="stage-wrap" id="stageWrap">
+      <canvas id="coverCanvas" width="1080" height="1080" aria-label="Preview cover art"></canvas>
+      <input id="roleEditor" type="text" maxlength="24" autocomplete="off" aria-label="Edit role tag" style="display:none">
     </div>
-    <p id="status" role="status"></p>
-    <p class="fine">Sample photos: freely licensed, graded in-app (see SOURCES.md) + your photos. Anton font (OFL) vendored locally. Works fully offline.</p>
-  </section>
-  <section class="stage">
-    <canvas id="cover" width="1080" height="1350" aria-label="The cover"></canvas>
+    <p class="status" id="statusLine">Siap — pilih layout, grade, lalu export PNG.</p>
   </section>
 </main>
-<script type="module" src="./src/main.js"></script>
+
+<footer class="foot">
+  <span>VICE HEAT — fan-made cover studio. Tanpa logo, artwork, atau font Rockstar Games. Font judul Anton (SIL Open Font License).</span>
+</footer>
+
+<script type="module" src="src/main.js"></script>
 </body>
 </html>
