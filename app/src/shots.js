@@ -1,60 +1,107 @@
-// VICE HEAT: Leonida Cover Studio — fixed screenshot scenes (app/src/shots.js).
-//
-// ?shot=editor shows the full editor with a photo loaded; ?shot=cover shows
-// the cover alone, edge to edge. The query picks the layout, grade,
-// intensity and title, and `w`/`h` size the cover canvas, so the capture
-// script can shoot each scene at its real post size. window.__shotReady is
-// set once the frame is painted, which is the capture script's signal.
+// VICE HEAT screenshot maker.
+// Reads shots.json at the repo root, serves app/ on a local port, and captures
+// each declared shot with Playwright + Chromium at its LITERAL dimensions
+// (no downscaling): the viewport is exactly w x h and the screenshot is the
+// viewport. JPEG quality starts at 82 and steps down to the floor of 50 until
+// the file fits the 256 KiB cap. Usage: node app/src/shots.js <outDir>
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import http from 'node:http';
+import { spawn } from 'node:child_process';
 
-import { GRADE_KEYS, LAYOUT_KEYS } from './cover.js';
+const here = fileURLToPath(new URL('.', import.meta.url));
+const repoRoot = join(here, '..', '..');
+const appDir = join(repoRoot, 'app');
+const outDir = process.argv[2] || join(repoRoot, 'output', 'screenshots');
+const shots = JSON.parse(readFileSync(join(repoRoot, 'shots.json'), 'utf8'));
 
-function paintWhenReady() {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      window.__shotReady = true;
-      resolve();
-    }));
+const require = createRequire(import.meta.url);
+let chromium = null;
+for (const name of ['playwright-core', 'playwright']) {
+  try {
+    chromium = require(name).chromium;
+    break;
+  } catch (e) { /* try the next package */ }
+}
+if (!chromium) throw new Error('shots.js needs playwright-core or playwright installed');
+
+function findChromiumExecutable() {
+  const candidates = [
+    process.env.CHROMIUM_PATH,
+    join(process.env.HOME || '', '.cache', 'ms-playwright', 'chromium-1255', 'chrome-linux', 'chrome'),
+    join(process.env.HOME || '', '.cache', 'ms-playwright', 'chromium_headless_shell-1255', 'chrome-headless-shell-linux64', 'chrome-headless-shell'),
+  ].filter(Boolean);
+  for (const c of candidates) if (existsSync(c)) return c;
+  return undefined; // let Playwright pick its bundled Chromium
+}
+
+const MIME = {
+  '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript',
+  '.mjs': 'text/javascript', '.json': 'application/json',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.ttf': 'font/ttf', '.svg': 'image/svg+xml',
+};
+
+function serveApp(port) {
+  const server = http.createServer((req, res) => {
+    try {
+      const url = new URL(req.url, 'http://localhost');
+      let path = decodeURIComponent(url.pathname);
+      if (path === '/') path = '/index.html';
+      const file = join(appDir, path);
+      if (!file.startsWith(appDir) || !existsSync(file)) {
+        res.writeHead(404);
+        res.end('not found');
+        return;
+      }
+      const ext = path.slice(path.lastIndexOf('.'));
+      res.writeHead(200, { 'content-type': MIME[ext] || 'application/octet-stream' });
+      res.end(readFileSync(file));
+    } catch (e) {
+      res.writeHead(500);
+      res.end('error');
+    }
   });
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
-function applyQueryToState(query, state) {
-  const layout = query.get('layout');
-  if (layout && LAYOUT_KEYS.includes(layout)) state.layout = layout;
-  const grade = query.get('grade');
-  if (grade && GRADE_KEYS.includes(grade)) state.grade = grade;
-  const intensity = Number(query.get('intensity'));
-  if (Number.isFinite(intensity)) state.intensity = Math.max(0, Math.min(100, intensity));
-  const title = query.get('title') ?? query.get('caption');
-  if (title) state.title = title.toUpperCase().slice(0, 24);
-  const subtitle = query.get('subtitle');
-  if (subtitle) state.subtitle = subtitle.slice(0, 24);
-  const tagline = query.get('tagline');
-  if (tagline) state.tagline = tagline.slice(0, 80);
-  const quote = query.get('quote');
-  if (quote) state.quote = quote.slice(0, 80);
-  const titlePos = query.get('titlepos');
-  if (['top', 'middle', 'bottom'].includes(titlePos)) state.titlePos = titlePos;
-}
-
-export async function runShot(shot, query, state, helpers) {
-  applyQueryToState(query, state);
-  const canvas = document.getElementById('cover');
-  if (shot === 'cover') {
-    // Cover alone: hide the editor chrome and size the canvas to the shot.
-    document.body.classList.add('shot-cover');
-    const w = Number(query.get('w')) || 1080;
-    const h = Number(query.get('h')) || 1080;
-    canvas.width = w;
-    canvas.height = h;
-    const { renderCover } = await import('./cover.js');
-    renderCover(canvas.getContext('2d'), state, w, h);
-    await paintWhenReady();
-    return;
+async function main() {
+  mkdirSync(outDir, { recursive: true });
+  const port = 18081;
+  const server = await serveApp(port);
+  const executablePath = findChromiumExecutable();
+  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
+  try {
+    for (const shot of shots) {
+      const page = await browser.newPage({ viewport: { width: shot.w, height: shot.h } });
+      const errors = [];
+      page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+      page.on('pageerror', (e) => errors.push(String(e)));
+      await page.goto(`http://127.0.0.1:${port}/${shot.query}`, { waitUntil: 'load' });
+      await page.waitForFunction(() => window.__viceHeat && window.__viceHeat.ready, null, { timeout: 30000 });
+      await page.waitForTimeout(400);
+      const target = join(outDir, shot.name);
+      let quality = 82;
+      let buf = Buffer.alloc(0);
+      while (true) {
+        buf = await page.screenshot({ type: 'jpeg', quality });
+        if (buf.length <= 262144 || quality <= 50) break;
+        quality = quality <= 58 ? 50 : quality - 12;
+      }
+      writeFileSync(target, buf);
+      console.log(`shot ${shot.name} ${shot.w}x${shot.h} quality=${quality} bytes=${buf.length} consoleErrors=${errors.length}`);
+      if (errors.length) console.log(`  console errors: ${errors.join(' | ')}`);
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+    server.close();
   }
-  // Editor scene, and the fallback for any unknown ?shot= value: the full
-  // studio, preview drawn by the editor itself. Never hang without
-  // __shotReady — a capture that waits forever helps nobody.
-  document.body.classList.add('shot-editor');
-  helpers.drawPreview();
-  await paintWhenReady();
 }
+
+main().catch((e) => {
+  console.error('shots.js failed:', e);
+  process.exit(1);
+});
