@@ -3,83 +3,87 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="VICE HEAT: Leonida Cover Studio — turn a photo and a caption into GTA-style cover art, offline in your browser.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23ff2d78'/%3E%3Ctext x='16' y='23' font-family='Arial Black' font-size='16' font-weight='900' text-anchor='middle' fill='%23ffe9a8'%3EVH%3C/text%3E%3C/svg%3E">
+<meta name="description" content="VICE HEAT: Leonida Cover Studio — turn a photo and a caption into GTA 6-style cover art, offline in your browser.">
 <title>VICE HEAT — Leonida Cover Studio</title>
-<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="brand-mark">VH</span> VICE HEAT <em>Leonida Cover Studio</em></div>
-  <p class="topbar-note">Your photo + a caption, made into GTA-style cover art. Offline — nothing uploads.</p>
+  <div class="brand">VICE HEAT <span>Leonida Cover Studio</span></div>
+  <div class="top-actions">
+    <button id="shuffleBtn" type="button" class="action-btn">Shuffle</button>
+    <button id="resetBtn" type="button" class="action-btn ghost">Reset</button>
+  </div>
 </header>
-<main class="app">
-  <aside class="controls" aria-label="Cover controls">
-    <section class="ctl">
-      <h2>LAYOUT</h2>
-      <div class="row" id="layoutRow" role="group" aria-label="Layout"></div>
+<main class="studio">
+  <section class="preview">
+    <noscript><p class="hint">VICE HEAT needs JavaScript to draw your cover.</p></noscript>
+    <canvas id="cover" width="1080" height="1080" aria-label="Cover preview — drag a panel to crop it"></canvas>
+    <p class="hint">Drag a panel to crop &middot; Scroll over a panel to zoom &middot; Click a panel to select it &middot; Click a role tag to rename it</p>
+  </section>
+  <aside class="controls" id="controls">
+    <section>
+      <h3>LAYOUT</h3>
+      <div class="btn-grid" id="layoutBtns"></div>
     </section>
-    <section class="ctl">
-      <h2>GRADE <span class="val" id="intensityVal">85%</span></h2>
-      <div class="row" id="gradeRow" role="group" aria-label="Colour grade"></div>
-      <label class="slider-label">Intensity
-        <input id="intensity" type="range" min="0" max="100" step="1" value="85">
+    <section>
+      <h3>GRADE</h3>
+      <div class="btn-grid" id="gradeBtns"></div>
+      <label class="slider-row">Intensity
+        <input type="range" id="intensity" min="0" max="100" value="70">
+        <span id="intensityVal">70%</span>
       </label>
     </section>
-    <section class="ctl" id="titleStyle">
-      <h2>TITLE STYLE</h2>
+    <section>
+      <h3>TITLE STYLE</h3>
       <label class="field">Title
-        <input id="titleInput" type="text" maxlength="24" value="VICE HEAT" autocomplete="off">
+        <input type="text" id="titleInput" value="VICE HEAT" maxlength="28">
       </label>
       <label class="field">Subtitle
-        <input id="subtitleInput" type="text" maxlength="24" value="LEONIDA" autocomplete="off">
+        <input type="text" id="subtitleInput" value="LEONIDA" maxlength="28">
       </label>
       <label class="field">Tagline
-        <input id="taglineInput" type="text" maxlength="80" value="Two outlaws. One last score." autocomplete="off">
+        <input type="text" id="taglineInput" value="Welcome to Leonida" maxlength="48">
       </label>
-      <label class="field">Quote bar
-        <input id="quoteInput" type="text" maxlength="80" value="&quot;Welcome back to Leonida.&quot;" autocomplete="off">
+      <label class="field">Quote
+        <input type="text" id="quoteInput" value="&quot;Partners in crime.&quot;" maxlength="64">
       </label>
-      <div class="row seg" role="group" aria-label="Title position">
-        <button type="button" data-titlepos="top" class="active">Top</button>
-        <button type="button" data-titlepos="middle">Middle</button>
-        <button type="button" data-titlepos="bottom">Bottom</button>
+      <label class="field">Title position
+        <select id="titlePos">
+          <option value="top">Top</option>
+          <option value="middle">Middle</option>
+          <option value="bottom">Bottom</option>
+        </select>
+      </label>
+      <label class="check-row">
+        <input type="checkbox" id="outlineToggle" checked> Title outline
+      </label>
+      <label class="slider-row">Outline thickness
+        <input type="range" id="outlineWidth" min="0" max="14" value="6">
+        <span id="outlineWidthVal">6px</span>
+      </label>
+      <label class="slider-row">Shadow
+        <input type="range" id="shadowRange" min="0" max="30" value="12">
+        <span id="shadowVal">12px</span>
+      </label>
+    </section>
+    <section>
+      <h3>PANELS</h3>
+      <p class="section-note">Click a panel to select it, upload your own photo per panel, or click a role tag to rename it.</p>
+      <div id="panelList"></div>
+    </section>
+    <section>
+      <h3>EXPORT</h3>
+      <div class="export-grid">
+        <button type="button" class="export-btn" data-export="1080x1080">1080 &times; 1080 PNG</button>
+        <button type="button" class="export-btn" data-export="1080x1350">1080 &times; 1350 PNG</button>
+        <button type="button" class="export-btn" data-export="1920x1080">1920 &times; 1080 PNG</button>
+        <button type="button" class="export-btn" data-export="1080x1920">1080 &times; 1920 PNG</button>
       </div>
-      <label class="check"><input id="outlineToggle" type="checkbox" checked> Title outline</label>
-      <label class="slider-label">Outline <span class="val" id="outlineWidthVal">6px</span>
-        <input id="outlineWidth" type="range" min="0" max="16" step="1" value="6">
-      </label>
-      <label class="slider-label">Shadow <span class="val" id="shadowVal">14px</span>
-        <input id="shadowRange" type="range" min="0" max="30" step="1" value="14">
-      </label>
-    </section>
-    <section class="ctl">
-      <h2>PHOTO — <span id="panelLabel">Panel 5 — DUO</span></h2>
-      <p class="hint">Click a panel to select it. Drag to crop, scroll to zoom, double-click to replace. Click a role chip on the cover to rename it.</p>
-      <label class="upload">Replace photo
-        <input id="photoFile" type="file" accept="image/*">
-      </label>
-      <label class="slider-label">Zoom <span class="val" id="zoomVal">100%</span>
-        <input id="zoomRange" type="range" min="100" max="400" step="5" value="100">
-      </label>
-    </section>
-    <section class="ctl">
-      <h2>ACTIONS</h2>
-      <div class="row">
-        <button id="shuffleBtn" type="button" class="action">Shuffle</button>
-        <button id="resetBtn" type="button" class="action">Reset</button>
-      </div>
-    </section>
-    <section class="ctl">
-      <h2>EXPORT PNG</h2>
-      <div class="row export" id="exportRow"></div>
-      <p id="status" role="status"></p>
+      <p class="section-note">One click per size. Photos never leave your machine.</p>
     </section>
   </aside>
-  <section class="stage" aria-label="Cover preview">
-    <canvas id="cover" width="960" height="960" aria-label="The cover preview"></canvas>
-  </section>
 </main>
-<script type="module" src="./src/main.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>
