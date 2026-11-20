@@ -1,38 +1,177 @@
-// VICE HEAT: Leonida Cover Studio — a gta6-cover-art-01 entry (Node 22, standard library only).
-// The app is this directory's app/ folder: plain static files a desktop browser loads offline
-// (app/index.html and its ES modules, vendored OFL Anton font, freely-licensed sample photographs,
-// no library and no network request). This file hands it in: it copies app/ and screenshots/
-// from beside this file to /output and writes /output/dossier.json, the summary the judge
-// reads, with the vendored make.fun library.
+// VICE HEAT: Leonida Cover Studio — entrypoint (Node 22, no build step).
+// Hands the entry in: it re-renders the 4 screenshots headlessly from the
+// app itself (best effort — the committed screenshots/ are the fallback),
+// copies app/ and screenshots/ to the output directory, and writes
+// dossier.json with the kit's buildDossier from vendor/makefun-app.ts.
 //
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+//   MAKEFUN_OUTPUT_DIR=/tmp/vice-heat-out node main.ts
+// Outside the grader MAKEFUN_OUTPUT_DIR stands in for /output.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawn } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-app.ts';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const REPO = dirname(fileURLToPath(import.meta.url));
+const OUT = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const SHOT_PORT = 8123;
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+const CAPS = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  app_max_files: 993,
+  app_max_bytes: 50331648,
+};
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in app/ or 48 MiB of app
-// files, in all, or a path under app/ over 1000 bytes: app/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    app_max_files: 993,
-    app_max_bytes: 50331648,
-    app_path_max_bytes: 1000,
-  }),
-);
+// The headless screenshot driver (Python + Playwright): reads shots.json,
+// loads each shot URL in Chromium, waits for the app to signal readiness,
+// captures the viewport, then scales the capture down to the gate's
+// screenshot limits (long side at most 1280, at most 256 KiB) as a JPEG.
+const DRIVER = `
+import json, sys
+from pathlib import Path
+from PIL import Image
+from playwright.sync_api import sync_playwright
+
+shots = json.loads(Path(sys.argv[1]).read_text())["shots"]
+base = sys.argv[2].rstrip("/")
+out = Path(sys.argv[3])
+out.mkdir(parents=True, exist_ok=True)
+problems = []
+with sync_playwright() as pw:
+    browser = pw.chromium.launch(args=["--no-sandbox", "--force-device-scale-factor=1"])
+    for shot in shots:
+        page = browser.new_page(viewport={"width": shot["width"], "height": shot["height"]})
+        notes = []
+        page.on("console", lambda m: notes.append(m.type + ": " + m.text) if m.type == "error" else None)
+        page.on("pageerror", lambda e: notes.append("pageerror: " + str(e)))
+        page.goto(base + shot["url"], wait_until="networkidle")
+        try:
+            page.wait_for_function("window.__viceHeatReady === true", timeout=20000)
+        except Exception as e:
+            problems.append({"file": shot["file"], "error": "app never became ready: " + str(e)})
+            page.close()
+            continue
+        page.wait_for_timeout(600)
+        full = out / ("full-" + shot["file"])
+        page.screenshot(path=str(full))
+        page.close()
+        im = Image.open(full).convert("RGB")
+        w, h = im.size
+        scale = min(1.0, 1280 / max(w, h))
+        if scale < 1.0:
+            im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
+        im.save(out / shot["file"], quality=88)
+        full.unlink()
+        bad = [n for n in notes if n.startswith("error") or n.startswith("pageerror")]
+        if bad:
+            problems.append({"file": shot["file"], "console": bad})
+    browser.close()
+print(json.dumps({"ok": True, "problems": problems}))
+`;
+
+function run(cmd, args, opts = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+    let out = '';
+    let err = '';
+    child.stdout?.on('data', (d) => { out += d; });
+    child.stderr?.on('data', (d) => { err += d; });
+    child.on('error', (e) => resolve({ code: -1, out, err: String(e) }));
+    child.on('close', (code) => resolve({ code, out, err }));
+  });
+}
+
+async function waitForServer(url, tries = 40) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(1000) });
+      if (res.ok) return true;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return false;
+}
+
+// Re-render screenshots into `dest`. Returns true when all 4 landed.
+async function renderScreenshots(dest) {
+  const tmp = mkdtempSync(join(tmpdir(), 'vice-heat-shots-'));
+  const driverPath = join(tmp, 'driver.py');
+  writeFileSync(driverPath, DRIVER);
+  const server = spawn('node', ['serve.ts'], {
+    cwd: REPO,
+    env: { ...process.env, PORT: String(SHOT_PORT) },
+    stdio: 'ignore',
+  });
+  try {
+    const base = `http://127.0.0.1:${SHOT_PORT}`;
+    if (!(await waitForServer(`${base}/`))) {
+      console.warn('main.ts: static server did not come up; keeping committed screenshots');
+      return false;
+    }
+    const staged = join(tmp, 'shots');
+    mkdirSync(staged, { recursive: true });
+    const result = await run('python3', [driverPath, join(REPO, 'shots.json'), base, staged]);
+    let report = { ok: false, problems: ['driver produced no report'] };
+    try {
+      report = JSON.parse(result.out.trim().split('\n').pop());
+    } catch {
+      /* keep the fallback report */
+    }
+    if (result.code !== 0 || !report.ok) {
+      console.warn('main.ts: screenshot driver failed; keeping committed screenshots', result.err.slice(0, 500));
+      return false;
+    }
+    if (report.problems?.length) {
+      console.warn('main.ts: screenshot problems:', JSON.stringify(report.problems).slice(0, 1000));
+    }
+    const shots = JSON.parse(readFileSync(join(REPO, 'shots.json'), 'utf8')).shots;
+    for (const shot of shots) {
+      const file = join(staged, shot.file);
+      if (!existsSync(file)) {
+        console.warn(`main.ts: missing screenshot ${shot.file}; keeping committed screenshots`);
+        return false;
+      }
+    }
+    rmSync(dest, { recursive: true, force: true });
+    mkdirSync(dest, { recursive: true });
+    cpSync(staged, dest, { recursive: true });
+    return true;
+  } finally {
+    server.kill();
+  }
+}
+
+async function main() {
+  mkdirSync(OUT, { recursive: true });
+  const shotDir = join(OUT, 'screenshots');
+  const rendered = await renderScreenshots(shotDir);
+  console.log(`main.ts: screenshots ${rendered ? 're-rendered headlessly' : 'copied from the repository'}`);
+  if (!rendered) {
+    rmSync(shotDir, { recursive: true, force: true });
+    cpSync(join(REPO, 'screenshots'), shotDir, { recursive: true });
+  }
+  const appDir = join(OUT, 'app');
+  rmSync(appDir, { recursive: true, force: true });
+  cpSync(join(REPO, 'app'), appDir, { recursive: true });
+  const dossier = buildDossier(OUT, CAPS);
+  writeFileSync(join(OUT, 'dossier.json'), dossier);
+  const parsed = JSON.parse(new TextDecoder().decode(dossier));
+  console.log(JSON.stringify({
+    cover: parsed.cover,
+    images: parsed.images,
+    schema: parsed.schema,
+    text_bytes: new TextEncoder().encode(parsed.text).length,
+    dossier_bytes: dossier.length,
+    output: OUT,
+  }, null, 2));
+}
+
+main().catch((err) => {
+  console.error('main.ts failed:', err);
+  process.exit(1);
+});
