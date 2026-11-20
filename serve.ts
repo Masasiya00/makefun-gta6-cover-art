@@ -1,51 +1,76 @@
-// serve.ts — static file server for the app/ directory.
-// Run: node serve.ts  ->  http://localhost:8080
-// No dependencies; plain Node. Serves only files inside app/.
+// VICE HEAT: Leonida Cover Studio — tiny static server for app/ (Node 22,
+// standard library only). Development convenience, not a web server for the
+// internet: `node serve.ts` serves app/ on http://localhost:8080, or
+// `node serve.ts --port 8091` for another port. Sends the MIME types an
+// offline web app needs and refuses every path outside app/.
 
-import http from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname, join, normalize, sep } from 'node:path';
+import { createReadStream, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = fileURLToPath(new URL('./app/', import.meta.url)).replace(/[/\\]+$/, '');
-const PORT = Number(process.env.PORT || 8080);
+const root = resolve(fileURLToPath(new URL('./app', import.meta.url)));
+const args = process.argv.slice(2);
+const portFlag = args.indexOf('--port');
+const wanted = portFlag === -1 ? 8080 : Number(args[portFlag + 1]);
+const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
 
-const TYPES: Record<string, string> = {
+const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.ttf': 'font/ttf',
-  '.md': 'text/plain; charset=utf-8',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.txt': 'text/plain; charset=utf-8',
+  '.md': 'text/markdown; charset=utf-8',
 };
 
-const server = http.createServer(async (req, res) => {
+createServer((request, response) => {
+  const url = new URL(request.url ?? '/', 'http://localhost');
+  let pathname: string;
   try {
-    const url = new URL(req.url || '/', 'http://localhost');
-    let rel = decodeURIComponent(url.pathname);
-    if (rel === '/') rel = '/index.html';
-    const file = normalize(join(ROOT, rel));
-    if (!file.startsWith(ROOT + sep) && file !== ROOT) {
-      res.writeHead(403);
-      res.end('forbidden');
-      return;
-    }
-    const body = await readFile(file);
-    res.writeHead(200, {
-      'content-type': TYPES[extname(file).toLowerCase()] || 'application/octet-stream',
-      'cache-control': 'no-store',
-    });
-    res.end(body);
-  } catch (e) {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('not found');
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    response.writeHead(400).end('bad request');
+    return;
   }
-});
-
-server.listen(PORT, () => {
-  console.log(`VICE HEAT static server: http://localhost:${PORT}`);
+  if (pathname.endsWith('/')) pathname += 'index.html';
+  const file = resolve(join(root, normalize(pathname)));
+  if (file !== root && !file.startsWith(root + sep)) {
+    response.writeHead(403).end('forbidden');
+    return;
+  }
+  let size: number;
+  try {
+    const stats = statSync(file);
+    if (!stats.isFile()) throw new Error('not a file');
+    size = stats.size;
+  } catch {
+    response.writeHead(404).end('not found');
+    return;
+  }
+  response.writeHead(200, {
+    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'content-length': size,
+    'cache-control': 'no-store',
+  });
+  // A HEAD request gets the headers and no body.
+  if (request.method === 'HEAD') {
+    response.end();
+    return;
+  }
+  createReadStream(file).pipe(response);
+}).listen(port, '127.0.0.1', () => {
+  console.log(`VICE HEAT app/ is on http://localhost:${port}`);
 });
