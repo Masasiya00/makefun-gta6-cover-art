@@ -1,624 +1,620 @@
-// VICE HEAT: Leonida Cover Studio — cover rendering engine.
-// Pure canvas code: no DOM access except the 2d context it is handed.
-// Every cover is drawn from a state object, so the editor, the exporter
-// and the headless screenshot driver all render the exact same art.
+// app/src/cover.js — VICE HEAT: Leonida Cover Studio
+// Poster renderer. Pure canvas drawing, no network: every photo is a local
+// file under app/samples/ or an image the user uploaded (never leaves the
+// machine). No Rockstar logo, artwork, or font is used anywhere.
+//
+// GEOMETRY RULES (structural, keep them):
+//  - The title owns its own horizontal band, 1.78x the title font size.
+//  - Title font size is computed from the canvas width.
+//  - Panels live ONLY in the zone outside the title band + furniture strip.
+//  - The duo panel is 1.32x its nominal cell, clamped to its zone so it can
+//    never bleed into a neighbouring panel.
+//  - In the slanted layout each slice is split: the top part is a ghost
+//    (faded, no chip), the bottom part carries the chip.
+//  - Role chips are drawn LAST, on top of everything, so they are never cut.
+//  - The seal sits in the furniture strip, radius 34.
+//  - Hero layout is untouched: the title sits on top of the art.
+//  - Magazine layout + title position "Middle" deliberately fall back to the
+//    top band (a magazine masthead belongs on top; a middle title would
+//    collide with the hero duo).
 
-export const PANELS = [
-  { id: 'beach', role: 'VICE BEACH', sample: 'beach.jpg', note: 'Surfer di gulungan ombak turquoise' },
-  { id: 'duo', role: 'THE DUO', sample: 'duo.jpg', note: 'Pasangan berpelukan saat sunset' },
-  { id: 'skyline', role: 'VICE CITY', sample: 'skyline.jpg', note: 'Ocean Drive malam, art-deco, palem, neon' },
-  { id: 'car', role: 'GETAWAY DRIVER', sample: 'car.jpg', note: 'Menyetir saat senja, bokeh lampu kota' },
-  { id: 'heli', role: 'AIR SUPPORT', sample: 'heli.jpg', note: 'Heli rescue kuning + kapal coast-guard' },
-  { id: 'pool', role: 'POOLSIDE', sample: 'pool.jpg', note: 'Perenang kupu-kupu mid-stroke' },
-  { id: 'boulevard', role: 'BOULEVARD', sample: 'boulevard.jpg', note: 'Wanita di samping mobil' },
-  { id: 'pier', role: 'THE PIER', sample: 'pier.jpg', note: 'Memancing di dermaga' },
-  { id: 'gator', role: 'LEONIDA WILD', sample: 'gator.jpg', note: 'Menunjuk buaya muda' },
+export const PHOTOS = [
+  { id: 'duo', file: 'samples/duo.jpg', role: 'THE DUO' },
+  { id: 'beach', file: 'samples/beach.jpg', role: 'VICE BEACH' },
+  { id: 'skyline', file: 'samples/skyline.jpg', role: 'VICE CITY' },
+  { id: 'car', file: 'samples/car.jpg', role: 'GETAWAY DRIVER' },
+  { id: 'heli', file: 'samples/heli.jpg', role: 'AIR SUPPORT' },
+  { id: 'pool', file: 'samples/pool.jpg', role: 'POOLSIDE' },
+  { id: 'boulevard', file: 'samples/boulevard.jpg', role: 'BOULEVARD' },
+  { id: 'pier', file: 'samples/pier.jpg', role: 'THE PIER' },
+  { id: 'gator', file: 'samples/gator.jpg', role: 'LEONIDA WILD' },
 ];
 
-export const LAYOUTS = {
-  grid: { name: '9-Panel Cover Grid', blurb: 'Grid 3 kolom ala cover resmi, duo tengah besar' },
-  slanted: { name: 'Slanted Panels', blurb: '5 slice miring vertikal' },
-  four: { name: '4-Panel', blurb: 'Grid 2 x 2' },
-  hero: { name: 'Single Hero', blurb: 'Satu foto duo besar + judul' },
-  magazine: { name: 'Magazine Spread', blurb: 'Double-page: hero kiri + grid mini 2 x 2 kanan' },
-};
+export const GRADES = [
+  { id: 'sunset', name: 'Sunset', title: 'VICE HEAT', tint: '#ff7a1a', strength: 0.42 },
+  { id: 'neon', name: 'Neon Night', title: 'NEON VICE', tint: '#ff2fb3', strength: 0.45 },
+  { id: 'twilight', name: 'Twilight Gold', title: 'GOLDEN HOUR', tint: '#e8a33d', strength: 0.40 },
+  { id: 'coral', name: 'Coral Heat', title: 'CORAL HEAT', tint: '#ff6f61', strength: 0.42 },
+  { id: 'violet', name: 'Vice Violet', title: 'VICE VIOLET', tint: '#8b5cf6', strength: 0.45 },
+  { id: 'mono', name: 'Mono Noir', title: 'MONO NOIR', tint: '#808080', strength: 0.85, mono: true },
+  { id: 'ocean', name: 'Ocean Drive', title: 'OCEAN DRIVE', tint: '#0ea5b7', strength: 0.45 },
+  { id: 'bubblegum', name: 'Bubblegum', title: 'BUBBLEGUM', tint: '#ff8fd1', strength: 0.42 },
+];
 
-export const GRADES = {
-  sunset: { name: 'Sunset', sat: 1.35, con: 1.12, bri: 1.03, hue: -12, sep: 0.08, tint: '#ff7a18', tintA: 0.14 },
-  neon: { name: 'Neon Night', sat: 1.5, con: 1.15, bri: 1.0, hue: 18, sep: 0, tint: '#ff2ea6', tintA: 0.12 },
-  twilight: { name: 'Twilight Gold', sat: 1.25, con: 1.08, bri: 1.05, hue: -25, sep: 0.15, tint: '#ffb347', tintA: 0.16 },
-  coral: { name: 'Coral Heat', sat: 1.4, con: 1.1, bri: 1.02, hue: -8, sep: 0.05, tint: '#ff5a5a', tintA: 0.14 },
-  violet: { name: 'Vice Violet', sat: 1.3, con: 1.1, bri: 1.0, hue: 35, sep: 0, tint: '#8b5cf6', tintA: 0.14 },
-  mono: { name: 'Mono Noir', sat: 0, con: 1.18, bri: 1.02, hue: 0, sep: 0, tint: '#111111', tintA: 0.06 },
-  ocean: { name: 'Ocean Drive', sat: 1.3, con: 1.1, bri: 1.04, hue: -42, sep: 0, tint: '#00b8c4', tintA: 0.16 },
-  bubblegum: { name: 'Bubblegum', sat: 1.45, con: 1.05, bri: 1.06, hue: 22, sep: 0, tint: '#ff7ad9', tintA: 0.16 },
-};
-
-export const ALT_TITLES = ['VICE HEAT', 'NEON VICE', 'GOLDEN HOUR', 'LEONIDA NIGHTS', 'SUNSET HEIST'];
-
+export const GRADE_TITLES = GRADES.map((g) => g.title);
+export const LAYOUTS = ['grid', 'slanted', 'quad', 'hero', 'magazine'];
 export const EXPORT_SIZES = [
-  { label: '1080 x 1080', w: 1080, h: 1080 },
-  { label: '1080 x 1350', w: 1080, h: 1350 },
-  { label: '1920 x 1080', w: 1920, h: 1080 },
-  { label: '1080 x 1920', w: 1080, h: 1920 },
+  [1080, 1080],
+  [1080, 1350],
+  [1920, 1080],
+  [1080, 1920],
 ];
 
-export const SUBTITLE = 'WELCOME TO LEONIDA';
-export const TAGLINE = 'Two outlaws. One last score. No way back.';
-export const QUOTE = 'The sun never sets on Vice City.';
-export const BILLING = 'LEONIDA PICTURES  •  A VICE HEAT PRODUCTION  •  STARRING THE DUO  •  MUSIC BY NEON COAST  •  FILMED IN VICE CITY, LEONIDA';
+export function gradeById(id) {
+  return GRADES.find((g) => g.id === id) || GRADES[0];
+}
 
-export function defaultState() {
+export function freshState() {
   return {
     layout: 'grid',
     grade: 'sunset',
     intensity: 85,
     title: 'VICE HEAT',
-    titlePos: 'top',
-    titleOutline: true,
-    outlineWidth: 55,
-    shadow: 60,
-    panels: PANELS.map((p) => ({ id: p.id, role: p.role, photo: p.sample, panX: 0, panY: 0, zoom: 1 })),
+    subtitle: 'LEONIDA',
+    tagline: 'WELCOME TO LEONIDA',
+    quote: 'One last score. One way out.',
+    titlePos: 'top', // 'top' | 'middle' | 'bottom'
+    outline: true,
+    outlineWidth: 6,
+    shadow: 14,
+    order: PHOTOS.map((p) => p.id), // slot i shows photo order[i]
+    roles: Object.fromEntries(PHOTOS.map((p) => [p.id, p.role])),
+    crops: {}, // slot index -> { scale, ox, oy }
+    uploads: {}, // slot index -> dataURL (session only, never uploaded)
   };
 }
 
-export function panelDef(id) {
-  return PANELS.find((p) => p.id === id) ?? PANELS[0];
+export function cloneState(s) {
+  return JSON.parse(JSON.stringify(s));
 }
 
-export function photoUrl(photo) {
-  if (typeof photo === 'string' && photo.startsWith('data:')) return photo;
-  return `samples/${photo}`;
-}
+// --- measuring -------------------------------------------------------------
+const measureCtx = (() => {
+  if (typeof document === 'undefined') return null;
+  return document.createElement('canvas').getContext('2d');
+})();
 
-function clamp(v, lo, hi) {
-  return Math.max(lo, Math.min(hi, v));
-}
-
-// --- Title-band geometry (fix: the title must never paint over panels) ---
-// The title block (subtitle + title + tagline) is sized from the REAL font
-// sizes and gets its own horizontal band. Panels are laid out only in the
-// zones outside that band and outside the bottom furniture strip, so the
-// title can never cover a photo, a role chip, or the billing line again.
-// The single hero layout is the documented exception: its one panel is a
-// full-bleed photo and the title floats over its empty sky, exactly as
-// before, because there is no grid to reserve a band against.
-export function titleFontSize(state, W, H) {
-  const len = Math.max(1, (state.title || 'VICE HEAT').length);
-  const byShortSide = Math.min(W, H) * 0.115;
-  const byWidth = (W * 0.92) / (0.58 * len);
-  return Math.max(28, Math.round(Math.min(byShortSide, byWidth)));
-}
-
-export function titleBandHeight(titleSize) {
-  return Math.round(titleSize * 1.78);
-}
-
-export function furnitureHeight(W) {
-  return Math.round(84 * (W / 1080));
-}
-
-// Where the title band sits for a state, and the panel zones that remain.
-// `titleY` is the centre line of the big title; the subtitle sits
-// 0.62*titleSize above it and the tagline 0.58*titleSize below it, and both
-// stay inside the band by construction (band height 1.78*titleSize).
-export function titleBandFor(state, W, H) {
-  const titleSize = titleFontSize(state, W, H);
-  const bandH = titleBandHeight(titleSize);
-  const footH = furnitureHeight(W);
-  if (state.layout === 'hero') {
-    // Hero keeps its old floating title slot verbatim (top / middle /
-    // bottom over the sky), so the clean portrait cover does not change.
-    const titleY =
-      state.titlePos === 'middle'
-        ? H * 0.47
-        : state.titlePos === 'bottom'
-          ? H - titleSize * 1.32
-          : titleSize * 1.18;
-    return { overlay: true, titleSize, bandH: 0, footH, bandY: 0, titleY };
+function fitTitleSize(W, H, title) {
+  let size = Math.min(W * 0.1, H * 0.17);
+  if (measureCtx && title) {
+    measureCtx.font = `${size}px Anton, sans-serif`;
+    const w = measureCtx.measureText(title.toUpperCase()).width;
+    const maxW = W * 0.94;
+    if (w > maxW) size *= maxW / w;
   }
-  const bandY =
-    state.titlePos === 'bottom'
-      ? H - footH - bandH
-      : state.titlePos === 'middle'
-        ? Math.round((H - footH - bandH) / 2)
-        : 0;
-  return { overlay: false, titleSize, bandH, footH, bandY, titleY: bandY + bandH * 0.52 };
+  return Math.max(18, size);
 }
 
-export function panelZones(state, W, H) {
-  const band = titleBandFor(state, W, H);
-  if (band.overlay) return { band, zones: [{ x: 0, y: 0, w: W, h: H }] };
-  if (state.titlePos === 'middle' && state.layout === 'magazine') {
-    // A magazine spread is one solid block (masthead + hero + minis); it
-    // cannot be cut in half by a middle band, so it falls back to the top
-    // band instead of ever overlapping the title. Still no overlap.
-    const top = { ...band, bandY: 0, titleY: band.bandH * 0.52 };
-    return { band: top, zones: [{ x: 0, y: band.bandH, w: W, h: H - band.footH - band.bandH }] };
-  }
-  if (state.titlePos === 'middle') {
-    return {
-      band,
-      zones: [
-        { x: 0, y: 0, w: W, h: band.bandY },
-        { x: 0, y: band.bandY + band.bandH, w: W, h: H - band.footH - (band.bandY + band.bandH) },
-      ],
+// --- geometry --------------------------------------------------------------
+export function geometry(W, H, state) {
+  const margin = Math.round(W * 0.03);
+  const furnitureH = Math.round(H * 0.1);
+  const titleSize = fitTitleSize(W, H, state.title);
+  const bandH = titleSize * 1.78; // the title band is 1.78x the title font size
+  const hero = state.layout === 'hero';
+  // Magazine + "Middle" title position deliberately fall back to the top band.
+  const titlePos =
+    state.layout === 'magazine' || state.titlePos === 'middle' ? 'top' : state.titlePos;
+  const gap = Math.max(6, Math.round(W * 0.008));
+  let zone;
+  if (hero) {
+    zone = { x: margin, y: margin, w: W - margin * 2, h: H - furnitureH - margin };
+  } else if (titlePos === 'bottom') {
+    zone = { x: margin, y: margin, w: W - margin * 2, h: H - furnitureH - bandH - margin };
+  } else {
+    zone = {
+      x: margin,
+      y: bandH + margin * 0.5,
+      w: W - margin * 2,
+      h: H - furnitureH - bandH - margin * 0.5,
     };
   }
-  const zoneY = state.titlePos === 'bottom' ? 0 : band.bandH;
-  return { band, zones: [{ x: 0, y: zoneY, w: W, h: H - band.footH - band.bandH }] };
+  return { margin, furnitureH, titleSize, bandH, titlePos, gap, zone, hero };
 }
 
-// Split `count` equal rows across one or two zones: a row never straddles
-// the title band. Rows are shared out between the zones in proportion to
-// each zone's height, and the rows inside one zone are sized to fill
-// exactly that zone — so no row can ever run past a zone edge into the
-// furniture strip below. Each row carries its zone so an oversized panel
-// can be clamped inside it.
-function rowsAcrossZones(zones, count, gap) {
-  const totalH = zones.reduce((s, z) => s + z.h, 0);
-  // Largest-remainder split of `count` rows across the zones; a tie goes
-  // to the last zone, so the top zone keeps fewer, taller rows.
-  const raw = zones.map((z) => (count * z.h) / totalH);
-  const counts = raw.map((r) => Math.floor(r));
-  let left = count - counts.reduce((s, c) => s + c, 0);
-  const order = raw
-    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
-    .sort((a, b) => b.frac - a.frac || b.i - a.i);
-  for (let k = 0; k < left; k++) counts[order[k].i] += 1;
-  const rows = [];
-  zones.forEach((z, zi) => {
-    const k = counts[zi];
-    if (k === 0) return;
-    const rh = (z.h - (k - 1) * gap) / k;
-    for (let j = 0; j < k; j++) {
-      rows.push({ y: z.y + j * (rh + gap), h: rh, zone: z });
+function rectsGrid(zone, gap) {
+  // 3x3 grid. The centre cell (the duo) is 1.32x its nominal cell; the
+  // eight neighbours shrink to make room, so nothing ever overlaps.
+  // The enlarged duo cell is clamped to its zone.
+  const cols = 3;
+  const rows = 3;
+  const cw = (zone.w - gap * (cols - 1)) / cols;
+  const rh = (zone.h - gap * (rows - 1)) / rows;
+  let ccw = Math.min(cw * 1.32, zone.w * 0.62);
+  let crh = Math.min(rh * 1.32, zone.h * 0.62);
+  const sideW = (zone.w - ccw - gap * 2) / 2;
+  const sideH = (zone.h - crh - gap * 2) / 2;
+  const xs = [zone.x, zone.x + sideW + gap, zone.x + sideW + gap + ccw + gap];
+  const ws = [sideW, ccw, sideW];
+  const ys = [zone.y, zone.y + sideH + gap, zone.y + sideH + gap + crh + gap];
+  const hs = [sideH, crh, sideH];
+  const cells = [];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      cells.push({ x: xs[c], y: ys[r], w: ws[c], h: hs[r] });
     }
-  });
-  return rows;
+  }
+  // Row-major cells, but the centre cell (index 4) always shows order[0]
+  // (the duo). The other eight cells show order[1..8].
+  const orderIndex = [1, 2, 3, 4, 0, 5, 6, 7, 8];
+  return cells.map((rect, i) => ({ slot: orderIndex[i], rect, kind: 'rect' }));
 }
 
-// Panel geometry for a layout in a W x H canvas. Each entry: { id, x, y, w, h, points? }.
-// `points` (slanted slices) is a polygon; otherwise the panel is a rectangle.
-// `zones` (optional) are the rects panels may occupy — from panelZones() —
-// so panels never enter the title band or the furniture strip. Without it
-// the whole canvas is used, as before.
-export function layoutPanels(layout, W, H, zones) {
-  const zoneList = zones && zones.length ? zones : [{ x: 0, y: 0, w: W, h: H }];
-  const area = zoneList[0];
-  const pad = Math.round(Math.min(W, H) * 0.012);
-  const gap = Math.round(Math.min(W, H) * 0.008);
-  // Inner zones: the pad insets panels from the canvas edges (and, for a
-  // split middle layout, from the outer edges only — panels may sit flush
-  // against the title band, which is a hard boundary, not a photo edge).
-  const inner = zoneList.map((z, i) => ({
-    x: area.x + pad,
-    y: z.y + (i === 0 ? pad : 0),
-    w: area.w - 2 * pad,
-    h: z.h - (i === 0 ? pad : 0) - (i === zoneList.length - 1 ? pad : 0),
-  }));
-  if (layout === 'hero') {
-    return [{ id: 'duo', x: area.x, y: area.y, w: area.w, h: area.h }];
-  }
-  if (layout === 'four') {
-    const rows = rowsAcrossZones(inner, 2, gap);
-    const cw = (inner[0].w - gap) / 2;
-    const ids = ['duo', 'beach', 'skyline', 'car'];
-    return ids.map((id, i) => ({
-      id,
-      x: inner[0].x + (i % 2) * (cw + gap),
-      y: rows[Math.floor(i / 2)].y,
-      w: cw,
-      h: rows[Math.floor(i / 2)].h,
-    }));
-  }
-  if (layout === 'slanted') {
-    const ids = ['duo', 'beach', 'skyline', 'car', 'heli'];
-    const top = zoneList[0].y;
-    const bottom = zoneList[zoneList.length - 1].y + zoneList[zoneList.length - 1].h;
-    const slant = Math.round((bottom - top) * 0.07);
-    const sw = area.w / ids.length;
-    const out = [];
-    ids.forEach((id, i) => {
-      const x0 = area.x + i * sw;
-      const x1 = area.x + (i + 1) * sw;
-      const points = [
-        [x0 + slant, top],
-        [x1 + slant, top],
-        [x1, bottom],
-        [x0, bottom],
-      ];
-      if (zoneList.length === 1) {
-        out.push({ id, x: x0, y: top, w: sw, h: bottom - top, points });
-        return;
-      }
-      // Middle band cuts every slice in two: each half keeps the full
-      // slice polygon but is clipped to its own zone, so the two halves
-      // still show one continuous photo with the title band between them.
-      // The upper half is a ghost — it paints but carries no role chip
-      // and is not hit-testable, so no label is ever drawn twice.
-      zoneList.forEach((z, zi) => {
-        out.push({
-          id,
-          x: x0,
-          y: z.y,
-          w: sw,
-          h: z.h,
-          points,
-          clip: { x: z.x, y: z.y, w: z.w, h: z.h },
-          ghost: zi === 0,
-        });
-      });
+function rectsSlanted(zone, gap) {
+  // Five diagonal slices. Each slice is a parallelogram; adjacent slices
+  // share an edge. The top ~42% of every slice is a "ghost" (faded, no
+  // chip); the bottom ~58% is full-strength and carries the chip.
+  const n = 5;
+  const slant = zone.h * 0.14;
+  const sw = zone.w / n;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const x0 = zone.x + i * sw;
+    const x1 = zone.x + (i + 1) * sw;
+    const poly = [
+      { x: x0 + slant, y: zone.y },
+      { x: x1 + slant, y: zone.y },
+      { x: x1, y: zone.y + zone.h },
+      { x: x0, y: zone.y + zone.h },
+    ];
+    out.push({
+      slot: i,
+      kind: 'poly',
+      poly,
+      rect: { x: x0, y: zone.y, w: sw + slant, h: zone.h },
+      ghostSplit: 0.42,
     });
-    return out;
   }
-  if (layout === 'magazine') {
-    const mast = Math.round(area.h * 0.155);
-    const leftW = Math.round(area.w * 0.54);
-    const rightX = area.x + pad + leftW + gap;
-    const rightW = area.x + area.w - pad - rightX;
-    const bodyTop = area.y + mast + pad;
-    const bodyH = area.y + area.h - pad - bodyTop;
-    const miniW = (rightW - gap) / 2;
-    const miniH = (bodyH - gap) / 2;
-    const minis = ['beach', 'skyline', 'car', 'heli'];
-    const out = [{ id: 'duo', x: area.x + pad, y: bodyTop, w: leftW, h: bodyH }];
-    minis.forEach((id, i) => {
-      out.push({
-        id,
-        x: rightX + (i % 2) * (miniW + gap),
-        y: bodyTop + Math.floor(i / 2) * (miniH + gap),
-        w: miniW,
-        h: miniH,
-      });
-    });
-    return out;
-  }
-  // grid: 3 x 3, duo in the centre drawn 1.32x so it pops over its neighbours.
-  // The oversized duo is clamped inside its own row's zone, so it can never
-  // reach into the title band or slice a neighbour's role chip in half.
-  const rows = rowsAcrossZones(inner, 3, gap);
-  const cw = (inner[0].w - 2 * gap) / 3;
-  const order = ['beach', 'skyline', 'heli', 'car', 'duo', 'pool', 'boulevard', 'pier', 'gator'];
-  return order.map((id, i) => {
-    const col = i % 3;
-    const row = rows[Math.floor(i / 3)];
-    const cx = inner[0].x + col * (cw + gap);
-    if (id === 'duo') {
-      const s = 1.32;
-      let w = cw * s;
-      let h = row.h * s;
-      const z = row.zone;
-      const fit = Math.min(1, z.w / w, z.h / h);
-      w *= fit;
-      h *= fit;
-      const x = Math.max(z.x, Math.min(cx + (cw - w) / 2, z.x + z.w - w));
-      const y = Math.max(z.y, Math.min(row.y + (row.h - h) / 2, z.y + z.h - h));
-      return { id, x, y, w, h };
-    }
-    return { id, x: cx, y: row.y, w: cw, h: row.h };
-  });
+  return out;
 }
 
-// CSS filter string for a grade at an intensity of 0-100. At 0 the photo is untouched.
-export function gradeFilter(gradeId, intensity) {
-  const g = GRADES[gradeId] ?? GRADES.sunset;
-  const t = clamp(intensity, 0, 100) / 100;
-  const sat = 1 + (g.sat - 1) * t;
-  const con = 1 + (g.con - 1) * t;
-  const bri = 1 + (g.bri - 1) * t;
-  const hue = g.hue * t;
-  const sep = g.sep * t;
-  return `saturate(${sat.toFixed(3)}) contrast(${con.toFixed(3)}) brightness(${bri.toFixed(3)}) hue-rotate(${hue.toFixed(1)}deg) sepia(${sep.toFixed(3)})`;
+function rectsQuad(zone, gap) {
+  const w = (zone.w - gap) / 2;
+  const h = (zone.h - gap) / 2;
+  return [
+    { slot: 0, kind: 'rect', rect: { x: zone.x, y: zone.y, w, h } },
+    { slot: 1, kind: 'rect', rect: { x: zone.x + w + gap, y: zone.y, w, h } },
+    { slot: 2, kind: 'rect', rect: { x: zone.x, y: zone.y + h + gap, w, h } },
+    { slot: 3, kind: 'rect', rect: { x: zone.x + w + gap, y: zone.y + h + gap, w, h } },
+  ];
 }
 
-// Draw one photo so it always fully covers its panel: the scale is the
-// cover-fit scale times zoom, and the pan is clamped to the leftover slack,
-// so no empty strip can ever appear at a panel edge.
-export function drawPhotoCover(ctx, img, x, y, w, h, panX, panY, zoom) {
-  if (!img || !img.naturalWidth) return;
-  const iw = img.naturalWidth;
-  const ih = img.naturalHeight;
-  const base = Math.max(w / iw, h / ih) * clamp(zoom, 1, 3);
-  const dw = iw * base;
-  const dh = ih * base;
-  const slackX = Math.max(0, (dw - w) / 2);
-  const slackY = Math.max(0, (dh - h) / 2);
-  const dx = x + (w - dw) / 2 + clamp(panX, -1, 1) * slackX;
-  const dy = y + (h - dh) / 2 + clamp(panY, -1, 1) * slackY;
+function rectsMagazine(zone, gap, W) {
+  // Left: hero duo. Spine: thin vertical bar with rotated issue text.
+  // Right: mini 2x2 grid. Masthead lives in the title band above.
+  const spineW = Math.max(16, Math.round(W * 0.02));
+  const leftW = zone.w * 0.56;
+  const rightX = zone.x + leftW + spineW + gap;
+  const rightW = zone.x + zone.w - rightX;
+  const gw = (rightW - gap) / 2;
+  const gh = (zone.h - gap) / 2;
+  return [
+    { slot: 0, kind: 'rect', rect: { x: zone.x, y: zone.y, w: leftW, h: zone.h }, hero: true },
+    { slot: 1, kind: 'rect', rect: { x: rightX, y: zone.y, w: gw, h: gh } },
+    { slot: 2, kind: 'rect', rect: { x: rightX + gw + gap, y: zone.y, w: gw, h: gh } },
+    { slot: 3, kind: 'rect', rect: { x: rightX, y: zone.y + gh + gap, w: gw, h: gh } },
+    { slot: 4, kind: 'rect', rect: { x: rightX + gw + gap, y: zone.y + gh + gap, w: gw, h: gh } },
+    { slot: 'spine', kind: 'spine', rect: { x: zone.x + leftW + gap * 0.5, y: zone.y, w: spineW, h: zone.h } },
+  ];
+}
+
+// Placements for the current layout. Each entry: { slot, kind, rect, poly?,
+// ghostSplit?, hero? }. slot indexes into state.order (spine has no photo).
+export function layoutPanels(state, W, H) {
+  const geo = geometry(W, H, state);
+  const { zone, gap } = geo;
+  if (state.layout === 'slanted') return { geo, panels: rectsSlanted(zone, gap) };
+  if (state.layout === 'quad') return { geo, panels: rectsQuad(zone, gap) };
+  if (state.layout === 'hero') {
+    return { geo, panels: [{ slot: 0, kind: 'rect', rect: { x: 0, y: 0, w: W, h: H }, full: true }] };
+  }
+  if (state.layout === 'magazine') return { geo, panels: rectsMagazine(zone, gap, W) };
+  return { geo, panels: rectsGrid(zone, gap) };
+}
+
+// --- photo drawing ---------------------------------------------------------
+export function clampCrop(rect, imgW, imgH, crop) {
+  const c = { scale: crop?.scale || 1, ox: crop?.ox || 0, oy: crop?.oy || 0 };
+  c.scale = Math.max(1, Math.min(3, c.scale));
+  const base = Math.max(rect.w / imgW, rect.h / imgH);
+  const s = base * c.scale;
+  const maxOx = Math.max(0, (imgW * s - rect.w) / 2);
+  const maxOy = Math.max(0, (imgH * s - rect.h) / 2);
+  c.ox = Math.max(-maxOx, Math.min(maxOx, c.ox));
+  c.oy = Math.max(-maxOy, Math.min(maxOy, c.oy));
+  return c;
+}
+
+function drawPhotoIn(ctx, img, rect, crop) {
+  const c = clampCrop(rect, img.naturalWidth, img.naturalHeight, crop);
+  const base = Math.max(rect.w / img.naturalWidth, rect.h / img.naturalHeight);
+  const s = base * c.scale;
+  const dw = img.naturalWidth * s;
+  const dh = img.naturalHeight * s;
+  let dx = rect.x + (rect.w - dw) / 2 + c.ox;
+  let dy = rect.y + (rect.h - dh) / 2 + c.oy;
+  if (dw > rect.w) dx = Math.min(rect.x, Math.max(rect.x + rect.w - dw, dx));
+  else dx = rect.x + (rect.w - dw) / 2;
+  if (dh > rect.h) dy = Math.min(rect.y, Math.max(rect.y + rect.h - dh, dy));
+  else dy = rect.y + (rect.h - dh) / 2;
   ctx.drawImage(img, dx, dy, dw, dh);
 }
 
-function clipPanel(ctx, g) {
-  ctx.beginPath();
-  if (g.points) {
-    ctx.moveTo(g.points[0][0], g.points[0][1]);
-    for (let i = 1; i < g.points.length; i++) ctx.lineTo(g.points[i][0], g.points[i][1]);
-    ctx.closePath();
+function applyGrade(ctx, grade, intensity, rect) {
+  const a = Math.max(0, Math.min(100, intensity)) / 100;
+  if (a <= 0) return;
+  ctx.save();
+  if (grade.mono) {
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = a * 0.18;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   } else {
-    ctx.rect(g.x, g.y, g.w, g.h);
+    ctx.globalAlpha = a * grade.strength;
+    ctx.fillStyle = grade.tint;
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   }
-  ctx.clip();
+  ctx.restore();
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  const rr = Math.min(r, w / 2, h / 2);
+function pathPoly(ctx, poly) {
   ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
   ctx.closePath();
 }
 
-function drawRoleChip(ctx, g, role, selected, scale) {
-  const fs = Math.max(11, Math.round(15 * scale));
-  ctx.font = `${fs}px Anton, "Arial Black", sans-serif`;
-  const tw = ctx.measureText(role).width;
-  const pw = tw + fs * 1.1;
-  const ph = fs * 1.9;
-  const px = g.x + Math.max(6, 10 * scale);
-  const py = g.y + g.h - ph - Math.max(6, 10 * scale);
-  ctx.save();
-  ctx.fillStyle = selected ? 'rgba(255,46,136,0.92)' : 'rgba(10,8,18,0.78)';
-  roundRect(ctx, px, py, pw, ph, ph / 2);
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(role, px + fs * 0.55, py + ph / 2 + 1);
-  ctx.restore();
-  return { x: px, y: py, w: pw, h: ph };
+function chipRect(ctx, text, x, y, W) {
+  const fs = Math.max(11, Math.round(W * 0.015));
+  ctx.font = `${fs}px Anton, sans-serif`;
+  const tw = ctx.measureText(text.toUpperCase()).width;
+  const padX = fs * 0.7;
+  const h = fs * 1.9;
+  return { x, y: y - h, w: tw + padX * 2, h, fs };
 }
 
-function drawTitleBlock(ctx, state, W, H, band) {
-  const scale = W / 1080;
-  const titleSize = band.titleSize;
-  // The whole block (subtitle + title + tagline) lives inside the band:
-  // the band was measured from these exact font sizes, so no line can
-  // spill onto a panel. For the hero overlay the band is the old floating
-  // slot over the sky, unchanged.
-  const yBase = band.titleY;
+function drawChip(ctx, text, rect, W) {
+  const c = chipRect(ctx, text, rect.x, rect.y, W);
+  ctx.save();
+  ctx.fillStyle = 'rgba(8, 8, 12, 0.88)';
+  roundRect(ctx, c.x, c.y, c.w, c.h, c.h / 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `${c.fs}px Anton, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text.toUpperCase(), c.x + c.fs * 0.7, c.y + c.h / 2 + 1);
+  ctx.restore();
+  return c;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// --- furniture -------------------------------------------------------------
+function drawSeal(ctx, cx, cy, W) {
+  const r = 34; // the seal lives in the furniture strip, radius 34
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#101018';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#d8a24a';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r - 5, 0, Math.PI * 2);
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(216, 162, 74, 0.7)';
+  ctx.stroke();
+  ctx.fillStyle = '#f5d9a0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(W * 0.011) + 6}px Anton, sans-serif`;
+  ctx.fillText('LEONIDA', cx, cy - 11);
+  ctx.font = `${Math.round(W * 0.014) + 6}px sans-serif`;
+  ctx.fillText('★', cx, cy + 3);
+  ctx.font = `${Math.round(W * 0.008) + 5}px Anton, sans-serif`;
+  ctx.fillText('EST. 2026', cx, cy + 15);
+  ctx.restore();
+}
+
+function drawFurniture(ctx, state, W, H, geo) {
+  const { furnitureH, margin } = geo;
+  const y0 = H - furnitureH;
+  ctx.save();
+  ctx.fillStyle = geo.hero ? 'rgba(8, 8, 12, 0.82)' : '#0d0d12';
+  ctx.fillRect(0, y0, W, furnitureH);
+  ctx.fillStyle = 'rgba(216, 162, 74, 0.55)';
+  ctx.fillRect(0, y0, W, 2);
+  // Quote bar: one line, centred near the top of the strip.
+  ctx.fillStyle = '#f2ead8';
+  ctx.font = `italic ${Math.max(13, Math.round(H * 0.016))}px Georgia, serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`“${state.quote}”`, W / 2, y0 + furnitureH * 0.26);
+  // Billing block, bottom-left (film-poster style small credits).
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+  ctx.font = `${Math.max(8, Math.round(H * 0.009))}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('LEONIDA PICTURES PRESENTS  •  A VICE HEAT PRODUCTION', margin, y0 + furnitureH * 0.58);
+  ctx.fillText('STARRING THE DUO  •  MUSIC BY THE NEON PALMS  •  © 2026 LEONIDA', margin, y0 + furnitureH * 0.78);
+  // Star strip, centred at the bottom of the strip.
+  ctx.fillStyle = '#ffd166';
+  ctx.font = `${Math.max(11, Math.round(H * 0.013))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('★ ★ ★ ★ ★', W / 2, y0 + furnitureH * 0.8);
+  // Seal, right side of the strip.
+  drawSeal(ctx, W - margin - 34, y0 + furnitureH / 2, W);
+  ctx.restore();
+}
+
+function drawCallout(ctx, W, H, geo) {
+  // Small tag pinned to the top-right corner of the panel zone.
+  const text = 'LEONIDA • 2026';
+  const fs = Math.max(10, Math.round(W * 0.013));
+  ctx.save();
+  ctx.font = `${fs}px Anton, sans-serif`;
+  const tw = ctx.measureText(text).width;
+  const pad = fs * 0.8;
+  const w = tw + pad * 2;
+  const h = fs * 2;
+  const x = geo.zone.x + geo.zone.w - w;
+  const y = geo.zone.y;
+  ctx.fillStyle = 'rgba(8, 8, 12, 0.85)';
+  roundRect(ctx, x, y, w, h, 4);
+  ctx.fill();
+  ctx.strokeStyle = '#d8a24a';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#f5d9a0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + w / 2, y + h / 2 + 1);
+  ctx.restore();
+}
+
+// --- title -----------------------------------------------------------------
+function drawTitle(ctx, state, W, H, geo) {
+  const { titleSize, bandH, titlePos } = geo;
+  let cy;
+  if (geo.hero) {
+    // Hero layout is untouched: the title sits on top of the art.
+    cy = titlePos === 'bottom' ? H - geo.furnitureH - bandH / 2 : titlePos === 'middle' ? H / 2 : bandH / 2;
+  } else {
+    cy = titlePos === 'bottom' ? H - geo.furnitureH - bandH / 2 : bandH / 2;
+  }
+  const title = (state.title || 'VICE HEAT').toUpperCase();
+  // Magazine carries one extra line (ISSUE 01) inside the same band, so the
+  // whole title block is shifted up a little to keep every line inside the
+  // 1.78x band instead of spilling over the panels below.
+  const cy0 = cy - (state.layout === 'magazine' ? titleSize * 0.12 : 0);
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // Subtitle above the title.
-  const subSize = Math.round(titleSize * 0.24);
-  ctx.font = `${subSize}px Anton, "Arial Black", sans-serif`;
-  try {
-    ctx.letterSpacing = `${Math.round(subSize * 0.35)}px`;
-  } catch (_) {
-    /* letterSpacing is Chromium-only; harmless elsewhere */
+  if (state.shadow > 0) {
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+    ctx.shadowBlur = state.shadow;
+    ctx.shadowOffsetY = Math.round(state.shadow * 0.35);
   }
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur = 8;
-  ctx.fillText(SUBTITLE, W / 2, yBase - titleSize * 0.62);
-  try {
-    ctx.letterSpacing = '0px';
-  } catch (_) {
-    /* ignore */
-  }
-  // Big gradient title — shrunk to fit if a long alt title would run off
-  // the canvas; the band was sized from the unshrunk size, so a shrunk
-  // title still sits inside it.
-  let fitSize = titleSize;
-  ctx.font = `${titleSize}px Anton, "Arial Black", sans-serif`;
-  const titleW = ctx.measureText(state.title).width;
-  if (titleW > W * 0.94) fitSize = Math.max(28, Math.floor((titleSize * W * 0.94) / titleW));
-  const grad = ctx.createLinearGradient(W / 2 - fitSize * 2.4, 0, W / 2 + fitSize * 2.4, 0);
-  grad.addColorStop(0, '#ff2e88');
-  grad.addColorStop(0.5, '#ff7a18');
-  grad.addColorStop(1, '#ffd319');
-  ctx.font = `${fitSize}px Anton, "Arial Black", sans-serif`;
-  ctx.shadowColor = 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = Math.round(((state.shadow ?? 60) / 100) * 42 * scale) + 2;
-  ctx.shadowOffsetY = Math.round(4 * scale);
-  if (state.titleOutline) {
-    ctx.lineWidth = Math.max(2, Math.round((((state.outlineWidth ?? 55) / 100) * 14 + 2) * scale));
-    ctx.strokeStyle = '#12081f';
+  ctx.font = `${titleSize}px Anton, sans-serif`;
+  const grad = ctx.createLinearGradient(0, cy0 - titleSize / 2, 0, cy0 + titleSize / 2);
+  grad.addColorStop(0, '#ffffff');
+  grad.addColorStop(1, '#ffe9c4');
+  if (state.outline) {
+    ctx.lineWidth = Math.max(1, state.outlineWidth);
+    ctx.strokeStyle = '#0d0d12';
     ctx.lineJoin = 'round';
-    ctx.strokeText(state.title, W / 2, yBase);
+    ctx.strokeText(title, W / 2, cy0 - titleSize * 0.08);
   }
   ctx.fillStyle = grad;
-  ctx.fillText(state.title, W / 2, yBase);
+  ctx.fillText(title, W / 2, cy0 - titleSize * 0.08);
   ctx.shadowColor = 'transparent';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
-  // Tagline under the title.
-  const tagSize = Math.round(titleSize * 0.21);
-  ctx.font = `italic ${tagSize}px Georgia, serif`;
-  ctx.fillStyle = 'rgba(255,255,255,0.94)';
-  ctx.fillText(TAGLINE, W / 2, yBase + titleSize * 0.58);
-  ctx.restore();
-}
-
-function drawFurniture(ctx, state, W, H) {
-  const scale = W / 1080;
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  // Five-star strip, top right.
-  const starSize = Math.round(26 * scale);
-  ctx.font = `${starSize}px Georgia, serif`;
-  ctx.fillStyle = '#ffd319';
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur = 6;
-  ctx.fillText('★ ★ ★ ★ ★', W - Math.round(92 * scale), Math.round(34 * scale));
-  ctx.shadowBlur = 0;
-  // Round LEONIDA seal, bottom right — parked INSIDE the furniture strip
-  // (below every panel, next to the billing) so its rim can never sit on
-  // a role chip again. Smaller than before so it fits the strip.
-  const footH = furnitureHeight(W);
-  const sr = Math.round(34 * scale);
-  const sx = W - sr - Math.round(18 * scale);
-  const sy = H - Math.round(footH / 2);
-  ctx.beginPath();
-  ctx.arc(sx, sy, sr, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(12,8,20,0.82)';
-  ctx.fill();
-  ctx.lineWidth = Math.max(2, 3 * scale);
-  ctx.strokeStyle = '#ffd319';
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(sx, sy, sr - Math.max(4, 7 * scale), 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(255,211,25,0.7)';
-  ctx.lineWidth = Math.max(1, 1.5 * scale);
-  ctx.stroke();
-  ctx.fillStyle = '#ffd319';
-  ctx.font = `${Math.round(11 * scale)}px Anton, "Arial Black", sans-serif`;
-  ctx.fillText('LEONIDA', sx, sy - Math.round(9 * scale));
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `${Math.round(9 * scale)}px Anton, "Arial Black", sans-serif`;
-  ctx.fillText('EST. 2026', sx, sy + Math.round(9 * scale));
-  // Billing block, bottom centre.
-  const billSize = Math.max(9, Math.round(12.5 * scale));
-  ctx.font = `${billSize}px Anton, "Arial Black", sans-serif`;
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  // Capped in width so the billing never runs underneath the corner role
-  // chips or the seal.
-  ctx.fillText(BILLING, W / 2, H - Math.round(40 * scale), W * 0.72);
-  // Quote bar, just above the billing.
-  const qSize = Math.max(10, Math.round(16 * scale));
-  ctx.font = `italic ${qSize}px Georgia, serif`;
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.fillText(`“${QUOTE}”`, W / 2, H - Math.round(62 * scale));
-  ctx.restore();
-}
-
-// Draw the whole cover. `images` maps a photo key (sample filename or data
-// URL) to a loaded HTMLImageElement. Returns the drawn geometry, including
-// each role label's rectangle, for hit-testing in the editor.
-export function drawCover(ctx, state, images, W, H) {
-  ctx.save();
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#0d0b12';
-  ctx.fillRect(0, 0, W, H);
-  const scale = W / 1080;
-  const { band, zones } = panelZones(state, W, H);
-  const geom = layoutPanels(state.layout, W, H, zones);
-  const byId = new Map(state.panels.map((p) => [p.id, p]));
-  const grade = GRADES[state.grade] ?? GRADES.sunset;
-  const tintA = grade.tintA * clamp(state.intensity, 0, 100) / 100;
-  const filter = gradeFilter(state.grade, state.intensity);
-  // Duo draws last in the grid so its oversized centre panel overlaps neighbours.
-  const ordered = [...geom].sort((a, b) => (a.id === 'duo' ? 1 : b.id === 'duo' ? -1 : 0));
-  const drawn = [];
-  const pendingLabels = [];
-  for (const g of ordered) {
-    const panel = byId.get(g.id);
-    if (!panel) continue;
-    const img = images.get(panel.photo);
-    ctx.save();
-    clipPanel(ctx, g);
-    if (g.clip) {
-      // Split slanted slice: keep this half's paint inside its own zone.
-      ctx.beginPath();
-      ctx.rect(g.clip.x, g.clip.y, g.clip.w, g.clip.h);
-      ctx.clip();
-    }
-    ctx.fillStyle = '#1a1426';
-    ctx.fillRect(g.x, g.y, g.w, g.h);
-    if (img) {
-      ctx.filter = filter;
-      drawPhotoCover(ctx, img, g.x, g.y, g.w, g.h, panel.panX, panel.panY, panel.zoom);
-      ctx.filter = 'none';
-      if (tintA > 0.005) {
-        ctx.globalAlpha = tintA;
-        ctx.fillStyle = grade.tint;
-        ctx.fillRect(g.x, g.y, g.w, g.h);
-        ctx.globalAlpha = 1;
-      }
-    }
-    ctx.restore();
-    // Panel frame.
-    ctx.save();
-    if (g.clip) {
-      ctx.beginPath();
-      ctx.rect(g.clip.x, g.clip.y, g.clip.w, g.clip.h);
-      ctx.clip();
-    }
-    if (g.points) {
-      ctx.beginPath();
-      ctx.moveTo(g.points[0][0], g.points[0][1]);
-      for (let i = 1; i < g.points.length; i++) ctx.lineTo(g.points[i][0], g.points[i][1]);
-      ctx.closePath();
-    } else {
-      ctx.beginPath();
-      ctx.rect(g.x, g.y, g.w, g.h);
-    }
-    ctx.lineWidth = Math.max(2, 3 * scale);
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.stroke();
-    ctx.restore();
-    // A ghost half-slice (middle title band) paints but carries no chip
-    // and is not hit-testable, so no label is ever drawn twice.
-    if (g.ghost) continue;
-    pendingLabels.push({ g, role: panel.role });
-    drawn.push({ ...g, role: panel.role, label: null });
-  }
+  // Subtitle + tagline stacked inside the same band.
+  const subSize = Math.max(11, titleSize * 0.2);
+  ctx.font = `${subSize}px Anton, sans-serif`;
+  ctx.fillStyle = '#f5d9a0';
+  const sub = (state.subtitle || 'LEONIDA').toUpperCase().split('').join(' ');
+  ctx.fillText(sub, W / 2, cy0 + titleSize * 0.46);
+  const tagSize = Math.max(9, titleSize * 0.14);
+  ctx.font = `${tagSize}px sans-serif`;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  ctx.fillText((state.tagline || '').toUpperCase(), W / 2, cy0 + titleSize * 0.46 + subSize + tagSize * 0.5);
   if (state.layout === 'magazine') {
-    // Masthead band + spine line make the spread read as two pages.
-    // The masthead sits at the top of the panel zone (below the title
-    // band), never over the title; the spine stops at the furniture strip.
-    const mastY = zones[0].y;
-    const mast = mastY + Math.round(zones[0].h * 0.155);
-    const zoneBottom = zones[0].y + zones[0].h;
-    ctx.save();
-    const mastGrad = ctx.createLinearGradient(0, mastY, 0, mast);
-    mastGrad.addColorStop(0, 'rgba(10,7,18,0.92)');
-    mastGrad.addColorStop(1, 'rgba(10,7,18,0.55)');
-    ctx.fillStyle = mastGrad;
-    ctx.fillRect(0, mastY, W, mast - mastY);
-    ctx.strokeStyle = 'rgba(255,211,25,0.85)';
-    ctx.lineWidth = Math.max(2, 3 * scale);
-    ctx.beginPath();
-    ctx.moveTo(0, mast);
-    ctx.lineTo(W, mast);
-    ctx.stroke();
-    const spineX = Math.round(W * 0.54) + Math.round(Math.min(W, H) * 0.012);
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = Math.max(1, 2 * scale);
-    ctx.setLineDash([8 * scale, 6 * scale]);
-    ctx.beginPath();
-    ctx.moveTo(spineX, mast + 8);
-    ctx.lineTo(spineX, zoneBottom - 8);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.font = `${Math.max(9, Math.round(12 * scale))}px Anton, "Arial Black", sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.fillText('ISSUE 01  —  LEONIDA', Math.round(14 * scale), H - Math.round(16 * scale));
-    ctx.textAlign = 'right';
-    ctx.fillText('VICE HEAT MAGAZINE', W - Math.round(14 * scale), H - Math.round(16 * scale));
-    ctx.restore();
-  }
-  drawFurniture(ctx, state, W, H);
-  drawTitleBlock(ctx, state, W, H, band);
-  // Role chips go on LAST, after every panel, the furniture and the
-  // title, so no later paint can ever slice one in half again.
-  for (const { g, role } of pendingLabels) {
-    const label = drawRoleChip(ctx, g, role, false, scale);
-    const entry = drawn.find((d) => d.id === g.id);
-    if (entry) entry.label = label;
+    ctx.font = `${tagSize}px Anton, sans-serif`;
+    ctx.fillStyle = '#d8a24a';
+    ctx.fillText('ISSUE 01 — LEONIDA', W / 2, cy0 + titleSize * 0.46 + subSize + tagSize * 1.7);
   }
   ctx.restore();
-  return drawn;
+  return cy;
 }
 
-// Shuffle photos across panels, pick a random grade and a random title.
-export function shuffleState(state, rng = Math.random) {
-  const photos = state.panels.map((p) => p.photo);
-  for (let i = photos.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [photos[i], photos[j]] = [photos[j], photos[i]];
+// --- main render -----------------------------------------------------------
+export function renderCover(ctx, state, images, uploadImages, W, H) {
+  const { geo, panels } = layoutPanels(state, W, H);
+  const grade = gradeById(state.grade);
+  ctx.clearRect(0, 0, W, H);
+  // Backdrop.
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#17171f');
+  bg.addColorStop(1, '#0b0b10');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  // Title band backdrop (not for hero: the title sits on the art there).
+  if (!geo.hero) {
+    const bandY = geo.titlePos === 'bottom' ? H - geo.furnitureH - geo.bandH : 0;
+    const tg = ctx.createLinearGradient(0, bandY, 0, bandY + geo.bandH);
+    tg.addColorStop(0, '#1b1b26');
+    tg.addColorStop(1, '#0b0b10');
+    ctx.fillStyle = tg;
+    ctx.fillRect(0, bandY, W, geo.bandH);
+    ctx.fillStyle = 'rgba(216, 162, 74, 0.55)';
+    const ruleY = geo.titlePos === 'bottom' ? bandY : bandY + geo.bandH;
+    ctx.fillRect(0, ruleY - 1, W, 2);
   }
-  const gradeKeys = Object.keys(GRADES);
-  const next = {
-    ...state,
-    grade: gradeKeys[Math.floor(rng() * gradeKeys.length)],
-    title: ALT_TITLES[Math.floor(rng() * ALT_TITLES.length)],
-    panels: state.panels.map((p, i) => ({ ...p, photo: photos[i], panX: 0, panY: 0, zoom: 1 })),
+
+  const chips = []; // chips are collected here and drawn LAST, on top of all.
+  const imgFor = (slot) => {
+    if (uploadImages && uploadImages[slot]) return uploadImages[slot];
+    const id = state.order[slot];
+    return images ? images[id] : null;
   };
-  return next;
+
+  for (const p of panels) {
+    if (p.kind === 'spine') {
+      ctx.save();
+      ctx.fillStyle = '#14141c';
+      ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+      ctx.fillStyle = '#d8a24a';
+      ctx.fillRect(p.rect.x, p.rect.y, 2, p.rect.h);
+      ctx.fillRect(p.rect.x + p.rect.w - 2, p.rect.y, 2, p.rect.h);
+      ctx.translate(p.rect.x + p.rect.w / 2, p.rect.y + p.rect.h / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillStyle = '#f5d9a0';
+      ctx.font = `${Math.max(9, Math.round(W * 0.011))}px Anton, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('VICE HEAT  •  ISSUE 01  •  LEONIDA', 0, 0);
+      ctx.restore();
+      continue;
+    }
+    const img = imgFor(p.slot);
+    const crop = state.crops[p.slot] || { scale: 1, ox: 0, oy: 0 };
+    ctx.save();
+    if (p.kind === 'poly') pathPoly(ctx, p.poly);
+    else ctx.beginPath(), ctx.rect(p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+    ctx.clip();
+    if (img) {
+      drawPhotoIn(ctx, img, p.rect, crop);
+      if (p.ghostSplit) {
+        // Slanted slice split: the top part is a ghost (faded, no chip).
+        const splitY = p.rect.y + p.rect.h * p.ghostSplit;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(p.rect.x - 200, p.rect.y - 200, p.rect.w + 400, splitY - p.rect.y + 200);
+        ctx.clip();
+        ctx.globalCompositeOperation = 'saturation';
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.34;
+        ctx.fillStyle = '#e8e8f0';
+        ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, splitY - p.rect.y);
+        ctx.restore();
+        // Grade applies to the bottom (live) part of the slice only.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(p.rect.x - 200, splitY, p.rect.w + 400, p.rect.h);
+        ctx.clip();
+        applyGrade(ctx, grade, state.intensity, p.rect);
+        ctx.restore();
+      } else {
+        applyGrade(ctx, grade, state.intensity, p.rect);
+      }
+    } else {
+      ctx.fillStyle = '#23232e';
+      ctx.fillRect(p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = `${Math.max(11, Math.round(W * 0.014))}px Anton, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((state.order[p.slot] || '?').toUpperCase(), p.rect.x + p.rect.w / 2, p.rect.y + p.rect.h / 2);
+    }
+    ctx.restore();
+    // Panel edge.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+    ctx.lineWidth = 1;
+    if (p.kind === 'poly') pathPoly(ctx, p.poly);
+    else ctx.beginPath(), ctx.rect(p.rect.x, p.rect.y, p.rect.w, p.rect.h);
+    ctx.stroke();
+    ctx.restore();
+    // Collect the chip; it is drawn after everything else.
+    if (!p.full) {
+      const id = state.order[p.slot];
+      const role = state.roles[id] || id || '';
+      const chipY = p.ghostSplit
+        ? p.rect.y + p.rect.h - Math.max(8, Math.round(W * 0.008))
+        : p.rect.y + p.rect.h - Math.max(8, Math.round(W * 0.008));
+      chips.push({ text: role, x: p.rect.x + Math.max(8, Math.round(W * 0.008)), y: chipY, slot: p.slot, photoId: id });
+    }
+  }
+
+  drawTitle(ctx, state, W, H, geo);
+  drawFurniture(ctx, state, W, H, geo);
+  if (!geo.hero) drawCallout(ctx, W, H, geo);
+  // Chips LAST, on top of everything, so they are never cut off.
+  const drawnChips = [];
+  for (const c of chips) {
+    const r = drawChip(ctx, c.text, { x: c.x, y: c.y }, W);
+    drawnChips.push({ ...c, rect: r });
+  }
+  return { geo, chips: drawnChips };
+}
+
+// Hit-test a canvas point. Returns { slot, photoId, chip } or null.
+export function hitTest(state, W, H, x, y) {
+  const { panels } = layoutPanels(state, W, H);
+  for (const p of panels) {
+    if (p.kind === 'spine') continue;
+    let inside = false;
+    if (p.kind === 'poly') {
+      inside = pointInPoly(x, y, p.poly);
+    } else {
+      inside =
+        x >= p.rect.x && x <= p.rect.x + p.rect.w && y >= p.rect.y && y <= p.rect.y + p.rect.h;
+    }
+    if (inside) return { slot: p.slot, photoId: state.order[p.slot], chip: false };
+  }
+  return null;
+}
+
+function pointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export function shuffleState(state) {
+  const ids = [...state.order];
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  state.order = ids;
+  const g = GRADES[Math.floor(Math.random() * GRADES.length)];
+  state.grade = g.id;
+  state.title = g.title;
+  return state;
 }
