@@ -1,62 +1,59 @@
 # VICE HEAT: Leonida Cover Studio
+[![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![rank](https://make.fun/badge/gta6-cover-art-01/Masasiya00/makefun-gta6-cover-art/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![reward](https://make.fun/badge/gta6-cover-art-01/Masasiya00/makefun-gta6-cover-art/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
-[![make.fun](https://make.fun/badge/bounty/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01)
-[![make.fun owner](https://make.fun/badge/owner/Masasiya00.svg)](https://make.fun/@Masasiya00)
-[![make.fun repo](https://make.fun/badge/repo/Masasiya00/makefun-gta6-cover-art.svg)](https://github.com/Masasiya00/makefun-gta6-cover-art)
+Turn any photo + caption into a GTA 6-style cover poster — fully offline, in
+your browser. No account, no upload, no network request: your photos never
+leave your machine.
 
-Ubah foto apapun jadi cover art gaya GTA 6 — langsung di browser, offline,
-tanpa upload. Isi panel dengan fotomu sendiri atau 9 foto sampel, atur
-layout, colour grade, judul, dan export PNG siap posting.
+## What it does
 
-Bounty: [gta6-cover-art-01 — Make GTA 6 Cover Art](https://make.fun/bounty/gta6-cover-art-01)
+- **5 layouts** — Grid (9 panels, duo big in the centre), Slanted (diagonal
+  slices, ghost top / live bottom), Quad (4 panels), Hero (one photo fills
+  the frame), and Magazine Spread (hero duo left, mini 2×2 grid right,
+  masthead, spine, "ISSUE 01 — LEONIDA").
+- **8 colour grades** — Sunset, Neon Night, Twilight Gold, Coral Heat, Vice
+  Violet, Mono Noir, Ocean Drive, Bubblegum — each with its own default
+  title, plus an intensity slider (0–100%).
+- **Per-panel crop** — drag any photo to pan it, scroll to zoom (1×–3×),
+  clamped so the photo always covers its panel. Upload your own photo into
+  any panel.
+- **Editable words** — title, subtitle, tagline and quote; title position
+  (top / middle / bottom), outline on/off + width, shadow. Click any role
+  label on the poster (e.g. THE DUO) to rename it inline.
+- **Shuffle & Reset** — Shuffle randomises the photo assignment, grade and
+  title; Reset restores the defaults.
+- **Poster furniture** — "LEONIDA ★ EST. 2026" seal, billing block, star
+  strip, callouts and quote bar.
+- **PNG export in 4 sizes** — 1080×1080, 1080×1350, 1920×1080, 1080×1920,
+  one button per size plus Export All.
 
-## Fitur
-
-- **5 layout**: 9-Panel Cover Grid (duo tengah besar), Slanted Panels,
-  4-Panel, Single Hero, dan **Magazine Spread** (double-page: hero kiri +
-  grid mini 2×2 kanan).
-- **8 colour grade**: Sunset, Neon Night, Twilight Gold, Coral Heat,
-  Vice Violet, Mono Noir, **Ocean Drive** (teal/cyan), **Bubblegum**
-  (pink) — plus **slider intensitas grade 0–100%**.
-- **Role tag bisa diedit**: klik label di panel, ketik teks baru.
-- **Shuffle**: mengacak foto tiap panel + grade + judul (VICE HEAT,
-  NEON VICE, GOLDEN HOUR, LEONIDA NIGHTS, SUNSET HEIST).
-- **Kontrol judul**: teks, posisi (atas/tengah/bawah), outline + ketebalan,
-  intensitas bayangan.
-- **Crop per panel**: klik panel untuk memilih, drag foto untuk menggeser,
-  scroll/slider untuk zoom — foto selalu menutupi panel penuh.
-- **Export 1 klik**: PNG **1080×1080, 1080×1350, 1920×1080, 1080×1920**
-  (story), atau Export All untuk keempatnya sekaligus.
-- **Poster furniture**: seal bundar LEONIDA ★ EST. 2026, billing block,
-  strip 5 bintang, tagline, dan quote bar.
-
-## Cara pakai
+## Run it
 
 ```sh
 node serve.ts
-# buka http://localhost:8080
 ```
 
-1. Pilih layout (1 · LAYOUT) dan colour grade + intensitas (2 · COLOUR GRADE).
-2. Klik panel di cover, lalu pilih foto sampel, upload fotomu, atau drag
-   foto di cover untuk crop. Klik label role di panel untuk mengganti
-   teksnya.
-3. Atur judul, posisi, outline, dan bayangan.
-4. Export PNG di ukuran yang kamu mau — atau Shuffle kalau mau kejutan.
+Then open http://localhost:8080 — the editor. Add `?mode=cover` for a clean
+poster with no controls, e.g.
+`http://localhost:8080/?mode=cover&layout=magazine&grade=ocean&intensity=70`.
 
-Tidak ada build step dan tidak ada network request: semua file ada di
-`app/`, font Anton di-vendor di `app/fonts/`.
-
-## Screenshot headless + dossier
+## Dossier screenshots
 
 ```sh
-MAKEFUN_OUTPUT_DIR=/tmp/vice-heat-out node main.ts
-# me-render 4 screenshot, menyalin app/ + screenshots/ ke output,
-# dan menulis dossier.json
+node main.ts
 ```
 
-## Lisensi
+Starts the server, screenshots the four shots from `shots.json` in headless
+Chromium at their literal dimensions, and writes `dossier.json` (plus the
+four JPEGs) into `./output` (override with `$MAKEFUN_OUTPUT_DIR`).
 
-MIT — lihat `LICENSE`. Foto sampel berlisensi bebas (daftar lengkap di
-`app/SOURCES.md`). Tanpa aset Rockstar Games: tanpa logo, artwork, atau
-font dari game.
+## License & sources
+
+Sample photos are free-licensed (Unsplash License, CC BY-SA 4.0, CC BY 3.0,
+CC BY 2.0) — see `app/SOURCES.md` for the per-photo table. The display font
+is Anton (SIL OFL), vendored locally. No Rockstar Games artwork, logo, or
+font is used anywhere. Code is MIT — see `LICENSE`.
+
+Entered on [make.fun](https://make.fun/?ref=cvw0cfes&utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01) · AI agents build software for cash rewards
