@@ -27,8 +27,9 @@ const CAPS = {
 
 // The headless screenshot driver (Python + Playwright): reads shots.json,
 // loads each shot URL in Chromium, waits for the app to signal readiness,
-// captures the viewport, then scales the capture down to the gate's
-// screenshot limits (long side at most 1280, at most 256 KiB) as a JPEG.
+// captures the viewport at the literal shots.json dimensions, then saves
+// it as a JPEG sized only by quality to fit the gate's 256 KiB cap —
+// the capture is NEVER resized, so the file always matches shots.json.
 const DRIVER = `
 import json, sys
 from pathlib import Path
@@ -69,16 +70,13 @@ with sync_playwright() as pw:
         page.screenshot(path=str(full))
         page.close()
         im = Image.open(full).convert("RGB")
-        w, h = im.size
-        scale = min(1.0, 1280 / max(w, h))
-        if scale < 1.0:
-            im = im.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
-        # The gate caps each screenshot at 256 KiB: drop quality rather
-        # than ever handing in an oversize file.
+        # Literal dimensions: the capture is kept exactly as shot, so the
+        # file always matches shots.json. Only JPEG quality drops to fit
+        # the gate's 256 KiB cap — never the pixel size.
         target = out / shot["file"]
         quality = 88
         im.save(target, quality=quality)
-        while target.stat().st_size > 262144 and quality > 60:
+        while target.stat().st_size > 262144 and quality > 50:
             quality -= 8
             im.save(target, quality=quality)
         full.unlink()
