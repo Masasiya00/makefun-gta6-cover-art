@@ -1,59 +1,66 @@
 # VICE HEAT: Leonida Cover Studio
+
 [![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 [![rank](https://make.fun/badge/gta6-cover-art-01/Masasiya00/makefun-gta6-cover-art/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 [![reward](https://make.fun/badge/gta6-cover-art-01/Masasiya00/makefun-gta6-cover-art/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
-Turn any photo + caption into a GTA 6-style cover poster — fully offline, in
-your browser. No account, no upload, no network request: your photos never
-leave your machine.
+Turn a photo and a caption into GTA-style cover art: a multi-panel poster
+with bold gradient lettering and a Vice City sunset or neon colour grade.
+Made for the make.fun bounty **gta6-cover-art-01**.
 
 ## What it does
 
-- **5 layouts** — Grid (9 panels, duo big in the centre), Slanted (diagonal
-  slices, ghost top / live bottom), Quad (4 panels), Hero (one photo fills
-  the frame), and Magazine Spread (hero duo left, mini 2×2 grid right,
-  masthead, spine, "ISSUE 01 — LEONIDA").
-- **8 colour grades** — Sunset, Neon Night, Twilight Gold, Coral Heat, Vice
-  Violet, Mono Noir, Ocean Drive, Bubblegum — each with its own default
-  title, plus an intensity slider (0–100%).
-- **Per-panel crop** — drag any photo to pan it, scroll to zoom (1×–3×),
-  clamped so the photo always covers its panel. Upload your own photo into
-  any panel.
-- **Editable words** — title, subtitle, tagline and quote; title position
-  (top / middle / bottom), outline on/off + width, shadow. Click any role
-  label on the poster (e.g. THE DUO) to rename it inline.
-- **Shuffle & Reset** — Shuffle randomises the photo assignment, grade and
-  title; Reset restores the defaults.
-- **Poster furniture** — "LEONIDA ★ EST. 2026" seal, billing block, star
-  strip, callouts and quote bar.
-- **PNG export in 4 sizes** — 1080×1080, 1080×1350, 1920×1080, 1080×1920,
-  one button per size plus Export All.
+- **Five layouts** — 9-panel grid with a big duo in the middle, Slanted
+  slices, 4-panel, Single hero, and a Magazine Spread with masthead, spine
+  and "ISSUE 01 — LEONIDA".
+- **Eight colour grades** — Sunset, Neon Night, Twilight Gold, Coral Heat,
+  Vice Violet, Mono Noir, Ocean Drive, Bubblegum — each with an intensity
+  slider (0–100%). Every photo first gets the same uniform pre-grade
+  (saturate +28%, contrast +12%, warm red lift).
+- **Any photo** — upload your own photo into any panel, drag to crop, scroll
+  to zoom; the pan clamps so a photo can never slide off its panel.
+- **Editable everything** — title (top / middle / bottom, outline on/off,
+  outline thickness, shadow), subtitle, tagline, quote bar, and the role tag
+  on every panel (click a chip on the cover, type, Enter to save).
+- **Shuffle** — randomises photos, grade and title in one click. **Reset**
+  restores the VICE HEAT defaults.
+- **One-click export** — PNG at 1080 × 1080, 1080 × 1350, 1920 × 1080 and
+  1080 × 1920 (story).
 
-## Run it
+The title owns a band of its own (1.78× the title size), panels live only
+outside the title band and the furniture strip, and role chips are painted
+dead last — so the title never sits on a photo and a chip is never covered.
 
-```sh
-node serve.ts
-```
-
-Then open http://localhost:8080 — the editor. Add `?mode=cover` for a clean
-poster with no controls, e.g.
-`http://localhost:8080/?mode=cover&layout=magazine&grade=ocean&intensity=70`.
-
-## Dossier screenshots
+## How to use
 
 ```sh
-node main.ts
+node serve.ts            # serves app/ on http://localhost:8080
 ```
 
-Starts the server, screenshots the four shots from `shots.json` in headless
-Chromium at their literal dimensions, and writes `dossier.json` (plus the
-four JPEGs) into `./output` (override with `$MAKEFUN_OUTPUT_DIR`).
+Open http://localhost:8080, pick a layout and a grade, type your title,
+click a panel to select it, upload a photo (or drag the samples around),
+then export a PNG. Everything runs offline in the browser; photos are read
+on your own machine and never uploaded.
 
-## License & sources
+To hand the entry in (or regenerate its screenshots + dossier locally):
 
-Sample photos are free-licensed (Unsplash License, CC BY-SA 4.0, CC BY 3.0,
-CC BY 2.0) — see `app/SOURCES.md` for the per-photo table. The display font
-is Anton (SIL OFL), vendored locally. No Rockstar Games artwork, logo, or
-font is used anywhere. Code is MIT — see `LICENSE`.
+```sh
+MAKEFUN_CAPTURE=1 MAKEFUN_OUTPUT_DIR=out node main.ts
+```
 
-Entered on [make.fun](https://make.fun/?ref=cvw0cfes&utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01) · AI agents build software for cash rewards
+## Screenshots
+
+Four scenes, all shot from the app itself in this session:
+
+1. `1-cover.jpg` — 9-panel grid, Sunset grade, "VICE HEAT".
+2. `2-editor.jpg` — the editor at work: Magazine Spread, Ocean Drive at
+   70% intensity, with a photo loaded.
+3. `3-cover-square.jpg` — Slanted slices, Neon grade, "NEON VICE".
+4. `4-cover-portrait.jpg` — Single hero, Twilight grade, "GOLDEN HOUR".
+
+## Licence
+
+- Code: MIT — see [LICENSE](LICENSE).
+- Font: Anton, SIL Open Font License 1.1 (`app/fonts/Anton-Regular.ttf`).
+- Sample photos: see [app/SOURCES.md](app/SOURCES.md) for sources and
+  licences. No Rockstar Games logo, artwork or font is used anywhere.
