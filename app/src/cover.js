@@ -229,8 +229,16 @@ function drawRoleChip(ctx, g, role, selected, scale) {
 function drawTitleBlock(ctx, state, W, H) {
   const scale = W / 1080;
   const titleSize = Math.round(W * 0.115);
+  // Keep the whole block (subtitle + title + tagline) inside the canvas:
+  // the top slot starts below the subtitle, the bottom slot ends above the
+  // billing/quote furniture. (Sizing by width made the old 0.10*H top slot
+  // push the subtitle off-canvas on wide exports.)
   const yBase =
-    state.titlePos === 'middle' ? H * 0.47 : state.titlePos === 'bottom' ? H * 0.86 : H * 0.1;
+    state.titlePos === 'middle'
+      ? H * 0.47
+      : state.titlePos === 'bottom'
+        ? H - titleSize * 1.32
+        : titleSize * 1.18;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -318,7 +326,9 @@ function drawFurniture(ctx, state, W, H) {
   const billSize = Math.max(9, Math.round(12.5 * scale));
   ctx.font = `${billSize}px Anton, "Arial Black", sans-serif`;
   ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.fillText(BILLING, W / 2, H - Math.round(40 * scale));
+  // Capped in width so the billing never runs underneath the corner role
+  // chips or the seal.
+  ctx.fillText(BILLING, W / 2, H - Math.round(40 * scale), W * 0.72);
   // Quote bar, just above the billing.
   const qSize = Math.max(10, Math.round(16 * scale));
   ctx.font = `italic ${qSize}px Georgia, serif`;
@@ -344,6 +354,7 @@ export function drawCover(ctx, state, images, W, H) {
   // Duo draws last in the grid so its oversized centre panel overlaps neighbours.
   const ordered = [...geom].sort((a, b) => (a.id === 'duo' ? 1 : b.id === 'duo' ? -1 : 0));
   const drawn = [];
+  const pendingLabels = [];
   for (const g of ordered) {
     const panel = byId.get(g.id);
     if (!panel) continue;
@@ -379,8 +390,15 @@ export function drawCover(ctx, state, images, W, H) {
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.stroke();
     ctx.restore();
-    const label = drawRoleChip(ctx, g, panel.role, false, scale);
-    drawn.push({ ...g, role: panel.role, label });
+    // Role chips are drawn after every panel, so a label is never sliced
+    // in half by the oversized centre panel overlapping its neighbours.
+    pendingLabels.push({ g, role: panel.role });
+    drawn.push({ ...g, role: panel.role, label: null });
+  }
+  for (const { g, role } of pendingLabels) {
+    const label = drawRoleChip(ctx, g, role, false, scale);
+    const entry = drawn.find((d) => d.id === g.id);
+    if (entry) entry.label = label;
   }
   if (state.layout === 'magazine') {
     // Masthead band + spine line make the spread read as two pages.
