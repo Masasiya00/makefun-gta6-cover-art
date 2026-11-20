@@ -1,6 +1,6 @@
 // VICE HEAT: Leonida Cover Studio — a gta6-cover-art-01 entry (Node 22, standard library only).
 // The app is this directory's app/ folder: plain static files a desktop browser loads offline
-// (app/index.html and its ES modules, vendored OFL Anton font, hand-drawn SVG sample scenes,
+// (app/index.html and its ES modules, vendored OFL Anton font, freely-licensed sample photographs,
 // no library and no network request). This file hands it in: it copies app/ and screenshots/
 // from beside this file to /output and writes /output/dossier.json, the summary the judge
 // reads, with the vendored make.fun library.
