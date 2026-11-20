@@ -87,6 +87,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .shuffle { background: var(--teal); color: #04222a; }
 .shuffle:hover { filter: brightness(1.12); }
 
+.reset {
+  background: #241d3a;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-weight: 700;
+}
+.reset:hover { border-color: var(--gold); }
+
+/* Visible keyboard focus: the editor is driven by buttons and sliders. */
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
 .export-all {
   background: linear-gradient(90deg, var(--pink), var(--orange));
   color: #fff;
