@@ -1,76 +1,47 @@
-// VICE HEAT: Leonida Cover Studio — tiny static server for app/ (Node 22,
-// standard library only). Development convenience, not a web server for the
-// internet: `node serve.ts` serves app/ on http://localhost:8080, or
-// `node serve.ts --port 8091` for another port. Sends the MIME types an
-// offline web app needs and refuses every path outside app/.
-
-import { createReadStream, statSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+// VICE HEAT: Leonida Cover Studio — static file server for local development.
+// Serves app/ at http://localhost:8080. Run: node serve.ts
+import http from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./app', import.meta.url)));
-const args = process.argv.slice(2);
-const portFlag = args.indexOf('--port');
-const wanted = portFlag === -1 ? 8080 : Number(args[portFlag + 1]);
-const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
+const here = fileURLToPath(new URL('.', import.meta.url));
+const appDir = join(here, 'app');
+const PORT = Number(process.env.PORT || 8080);
 
-const MIME: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
+const MIME = {
+  '.html': 'text/html',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.json': 'application/json',
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.woff': 'font/woff',
+  '.png': 'image/png',
   '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
-  '.txt': 'text/plain; charset=utf-8',
-  '.md': 'text/markdown; charset=utf-8',
+  '.svg': 'image/svg+xml',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname: string;
+const server = http.createServer((req, res) => {
   try {
-    pathname = decodeURIComponent(url.pathname);
-  } catch {
-    response.writeHead(400).end('bad request');
-    return;
+    const url = new URL(req.url || '/', 'http://localhost');
+    let path = decodeURIComponent(url.pathname);
+    if (path === '/') path = '/index.html';
+    const file = join(appDir, path);
+    if (!file.startsWith(appDir) || !existsSync(file)) {
+      res.writeHead(404, { 'content-type': 'text/plain' });
+      res.end('not found');
+      return;
+    }
+    const ext = path.slice(path.lastIndexOf('.'));
+    res.writeHead(200, { 'content-type': MIME[ext] || 'application/octet-stream' });
+    res.end(readFileSync(file));
+  } catch (e) {
+    res.writeHead(500, { 'content-type': 'text/plain' });
+    res.end('error');
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size: number;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    response.writeHead(404).end('not found');
-    return;
-  }
-  response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  // A HEAD request gets the headers and no body.
-  if (request.method === 'HEAD') {
-    response.end();
-    return;
-  }
-  createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`VICE HEAT app/ is on http://localhost:${port}`);
+});
+
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`VICE HEAT serving app/ at http://localhost:${PORT}`);
 });
