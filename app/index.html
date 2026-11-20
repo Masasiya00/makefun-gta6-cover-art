@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>VICE HEAT — Leonida Cover Studio</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main class="app">
+  <section class="controls" aria-label="Cover controls">
+    <h1>VICE HEAT</h1>
+    <p class="sub">Leonida Cover Studio — turn any photo into a GTA&nbsp;6-style cover. All art here is original; no Rockstar artwork, logo or font.</p>
+
+    <h2>1 · Layout</h2>
+    <div id="layouts" class="row"></div>
+
+    <h2>2 · Colour grade</h2>
+    <div id="grades" class="row grades"></div>
+
+    <h2>3 · Photos</h2>
+    <p class="hint">Click a panel on the cover to select it, then pick a sample below, upload your own, or drag a photo onto the cover. Drag inside a panel to crop.</p>
+    <div id="samples" class="samples"></div>
+    <label class="upload">Upload a photo <input id="upload" type="file" accept="image/*"></label>
+    <p id="selLabel" class="sel">Panel 1 — Duo Sunset</p>
+    <label>Zoom <input id="zoom" type="range" min="1" max="3" step="0.05" value="1"></label>
+    <button id="resetCrop" type="button" class="ghost">Reset crop</button>
+
+    <h2>4 · Lettering</h2>
+    <label>Title <input id="title" type="text" maxlength="24" value="VICE HEAT"></label>
+    <label>Subtitle <input id="subtitle" type="text" maxlength="40" value="Welcome to Leonida"></label>
+    <label>Tagline <input id="tagline" type="text" maxlength="60" value="Two outlaws. One last score. No way back."></label>
+    <label>Quote <input id="quote" type="text" maxlength="60" value="&quot;The sun never sets on Vice City.&quot;"></label>
+
+    <h2>5 · Poster furniture</h2>
+    <div id="furniture" class="checks"></div>
+
+    <h2>6 · Preview size</h2>
+    <div class="row">
+      <button type="button" data-aspect data-w="1080" data-h="1080">Square</button>
+      <button type="button" data-aspect data-w="1080" data-h="1350" class="active">Portrait</button>
+      <button type="button" data-aspect data-w="1920" data-h="1080">Landscape</button>
+    </div>
+
+    <h2>7 · Export PNG</h2>
+    <button id="exportAll" type="button" class="primary">Export all 3 sizes</button>
+    <div class="row">
+      <button id="exportSquare" type="button">1080×1080</button>
+      <button id="exportPortrait" type="button">1080×1350</button>
+      <button id="exportWide" type="button">1920×1080</button>
+    </div>
+    <p id="status" role="status"></p>
+    <p class="fine">Original art only: hand-drawn SVG scenes + your photos. Anton font (OFL) vendored locally. Works fully offline.</p>
+  </section>
+  <section class="stage">
+    <canvas id="cover" width="1080" height="1350" aria-label="The cover"></canvas>
+  </section>
+</main>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
