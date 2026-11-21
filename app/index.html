@@ -1,128 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="VICE HEAT: Leonida Cover Studio — turn any photo into a GTA 6-style cover art poster.">
-<meta name="color-scheme" content="dark">
 <title>VICE HEAT — Leonida Cover Studio</title>
-<link rel="icon" href="favicon.ico">
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<noscript><p style="padding:20px">VICE HEAT needs JavaScript enabled to draw your cover.</p></noscript>
-<header id="topbar">
-  <div class="brand">
-    <span class="brand-mark">VH</span>
-    <div>
+<div id="editor">
+  <header id="topbar">
+    <div class="brand">
       <h1>VICE HEAT</h1>
-      <p>Leonida Cover Studio</p>
+      <p>Leonida Cover Studio — turn your photos into GTA-style cover art</p>
     </div>
-  </div>
-  <div class="top-actions">
-    <button id="btn-shuffle" type="button" title="Random photos, grade and title">Shuffle</button>
-    <button id="btn-reset" type="button" title="Back to the default cover">Reset</button>
-    <button id="btn-export" type="button" class="primary" title="Download this cover as PNG">Export PNG</button>
-    <button id="btn-export-all" type="button" class="primary" title="Download all 4 sizes">Export all 4 sizes</button>
-  </div>
-</header>
-
-<main id="editor">
-  <aside id="controls" aria-label="Cover controls">
-    <section>
-      <h2>LAYOUT</h2>
-      <div id="layout-pills" class="pills" role="group" aria-label="Layout"></div>
-      <p class="hint">Five ways to frame Leonida. Magazine puts the duo big on the left.</p>
-    </section>
-
-    <section>
-      <h2>TITLE STYLE</h2>
-      <label class="field">Title
-        <input id="in-title" type="text" value="VICE HEAT" maxlength="24" autocomplete="off">
-      </label>
-      <label class="field">Subtitle
-        <input id="in-subtitle" type="text" value="LEONIDA" maxlength="24" autocomplete="off">
-      </label>
-      <label class="field">Tagline
-        <input id="in-tagline" type="text" value="Welcome back to paradise." maxlength="80" autocomplete="off">
-      </label>
-      <label class="field">Quote bar
-        <input id="in-quote" type="text" value="&ldquo;The heat never leaves.&rdquo; — LEONIDA TIMES" maxlength="90" autocomplete="off">
-      </label>
-      <label class="field">Title position
-        <select id="in-titlepos">
-          <option value="top">Top</option>
-          <option value="bottom" selected>Bottom</option>
-          <option value="middle">Middle (falls back to top)</option>
+    <div class="top-actions">
+      <button id="shuffle" type="button">Shuffle</button>
+      <button id="reset" type="button">Reset</button>
+      <label class="export-label" for="export-size">Export
+        <select id="export-size">
+          <option value="1080x1080">1080 × 1080 square</option>
+          <option value="1080x1350">1080 × 1350 portrait</option>
+          <option value="1920x1080">1920 × 1080 wide</option>
+          <option value="1080x1920">1080 × 1920 story</option>
         </select>
       </label>
-      <label class="check"><input id="in-outline" type="checkbox" checked> Thick outline</label>
-      <label class="field">Outline thickness
-        <input id="in-outline-px" type="range" min="0" max="14" step="1" value="5">
-        <output id="out-outline-px">5 px</output>
-      </label>
-      <label class="field">Title shadow
-        <input id="in-shadow" type="range" min="0" max="30" step="1" value="14">
-        <output id="out-shadow">14 px</output>
-      </label>
-    </section>
-
-    <section>
-      <h2>GRADE</h2>
-      <div id="grade-pills" class="pills" role="group" aria-label="Colour grade"></div>
-      <label class="field">Grade intensity
-        <input id="in-intensity" type="range" min="0" max="100" step="5" value="80">
-        <output id="out-intensity">80%</output>
-      </label>
-    </section>
-
-    <section>
-      <h2>PANELS</h2>
-      <p class="hint">Click a photo to pick it, then drag to crop and scroll to zoom. Click a role
-      tag to rename it. Or drop your own photo on a panel with the upload button.</p>
-      <label class="field">Selected panel
-        <select id="in-panel"></select>
-      </label>
-      <label class="field">Role tag
-        <input id="in-tag" type="text" maxlength="24" autocomplete="off">
-      </label>
-      <div class="row">
-        <button id="btn-upload" type="button">Upload photo…</button>
-        <input id="file-upload" type="file" accept="image/*" hidden>
-      </div>
-      <label class="field">Zoom
-        <input id="in-zoom" type="range" min="100" max="300" step="5" value="100">
-        <output id="out-zoom">1.00×</output>
-      </label>
-      <p class="hint" id="panel-hint">Panel 1 of 9 — THE DUO</p>
-    </section>
-
-    <section>
-      <h2>EXPORT</h2>
-      <div class="row wrap">
-        <button type="button" data-export="1080x1080">1080 × 1080</button>
-        <button type="button" data-export="1080x1350">1080 × 1350</button>
-        <button type="button" data-export="1920x1080">1920 × 1080</button>
-        <button type="button" data-export="1080x1920">1080 × 1920</button>
-      </div>
-      <p class="hint">One click, exact pixels. Export-all downloads all four sizes.</p>
-    </section>
-  </aside>
-
-  <section id="stage-col">
-    <div id="stage-wrap">
-      <canvas id="stage" width="1280" height="720"></canvas>
-      <input id="tag-editor" type="text" maxlength="24" hidden autocomplete="off" aria-label="Rename role tag">
+      <button id="export-btn" type="button">Export PNG</button>
     </div>
-    <p id="stage-hint">Drag a photo to reframe it &middot; scroll to zoom &middot; click a role tag to rename it</p>
-  </section>
-</main>
+  </header>
 
-<footer id="foot">
-  <span>VICE HEAT — fan-made cover studio. No Rockstar artwork, logo or font. Sample photos are freely licensed; see SOURCES.md.</span>
-</footer>
+  <div id="workbench">
+    <main id="stage-wrap">
+      <canvas id="stage" width="900" height="900"></canvas>
+      <p id="hint">Click a role chip to rename it. Drag a photo to reposition it, scroll to zoom. Click a panel, then Upload to replace its photo.</p>
+    </main>
 
-<script src="src/cover.js"></script>
-<script src="src/main.js"></script>
+    <aside id="controls">
+      <section class="group">
+        <h2>Layout</h2>
+        <div id="layout-bar"></div>
+      </section>
+
+      <section class="group">
+        <h2>Colour grade</h2>
+        <label for="grade">Grade</label>
+        <select id="grade"></select>
+        <label for="grade-intensity">Intensity <span id="grade-intensity-val">80%</span></label>
+        <input id="grade-intensity" type="range" min="0" max="100" value="80">
+      </section>
+
+      <section class="group">
+        <h2>Title</h2>
+        <label for="title-input">Caption</label>
+        <input id="title-input" type="text" value="VICE HEAT" maxlength="40">
+        <label for="title-pos">Position</label>
+        <select id="title-pos">
+          <option value="top">Top</option>
+          <option value="middle">Middle (falls back to top)</option>
+          <option value="bottom">Bottom</option>
+        </select>
+        <label class="check"><input id="title-outline" type="checkbox" checked> Outline</label>
+        <label for="outline-width">Outline thickness</label>
+        <input id="outline-width" type="range" min="0" max="14" value="6">
+        <label for="title-shadow">Shadow</label>
+        <input id="title-shadow" type="range" min="0" max="30" value="14">
+      </section>
+
+      <section class="group">
+        <h2>Panels</h2>
+        <button id="upload-btn" type="button">Upload photo into selected panel</button>
+        <input id="upload-input" type="file" accept="image/*" hidden>
+        <div id="panel-list"></div>
+      </section>
+
+      <section class="group note">
+        <h2>About</h2>
+        <p>All photos stay on your machine — nothing is uploaded. Sample photos are free-licensed (see SOURCES.md). No Rockstar logo, artwork or font is used.</p>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<div id="tag-editor" style="display:none">
+  <input id="tag-input" type="text" maxlength="24" aria-label="Role tag">
+</div>
+
+<script type="module" src="./src/main.js"></script>
 </body>
 </html>
