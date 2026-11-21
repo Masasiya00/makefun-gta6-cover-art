@@ -1,7 +1,9 @@
-/* VICE HEAT — Leonida Cover Studio. Dark vice theme: ink navy, hot pink, sunset orange. */
+/* VICE HEAT: Leonida Cover Studio — editor chrome (the cover itself is
+   drawn on canvas by app/src/cover.js). Dark Vice theme, sunset accents. */
+
 @font-face {
-  font-family: "Anton";
-  src: url("fonts/Anton-Regular.ttf") format("truetype");
+  font-family: 'Anton';
+  src: url('fonts/Anton-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -9,211 +11,183 @@
 
 * { box-sizing: border-box; }
 
-:root {
-  --ink: #0d0b16;
-  --panel: #171226;
-  --panel-2: #1f1832;
-  --line: #322a4d;
-  --text: #f4eefc;
-  --muted: #b7a8d6;
-  --pink: #ff2e88;
-  --orange: #ff8a2a;
-  --gold: #ffc93c;
-  --cyan: #37e0d8;
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: #0d0d12;
+  color: #f5f5f7;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
-html, body { height: 100%; }
-body {
-  margin: 0;
-  background: var(--ink);
-  color: var(--text);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+#editor { min-height: 100vh; display: flex; flex-direction: column; }
 
 #topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 10px 18px;
-  background: linear-gradient(90deg, #1b0f2e, #3a0f2e 55%, #4a1a08);
-  border-bottom: 2px solid var(--pink);
+  gap: 12px;
+  padding: 12px 20px;
+  background: linear-gradient(90deg, #1a0b2e, #3d0a2e 55%, #7a1e12);
+  border-bottom: 2px solid #ffd166;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 44px; height: 44px;
-  font-family: "Anton", sans-serif;
-  font-size: 20px;
-  color: #fff;
-  background: linear-gradient(135deg, var(--pink), var(--orange));
-  border-radius: 8px;
-  transform: rotate(-4deg);
-}
+
 .brand h1 {
   margin: 0;
-  font-family: "Anton", sans-serif;
-  font-size: 26px;
+  font-family: 'Anton', "Arial Black", sans-serif;
+  font-size: 30px;
   letter-spacing: 2px;
+  color: #ffd166;
   line-height: 1;
-  background: linear-gradient(90deg, #ffd166, var(--pink) 60%, var(--orange));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
 }
-.brand p { margin: 2px 0 0; color: var(--muted); font-size: 12px; letter-spacing: 3px; text-transform: uppercase; }
 
-.top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.brand p { margin: 4px 0 0; color: #ffe9a8; font-size: 12px; }
 
-button {
+.top-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+button, select, input[type="text"] {
   font: inherit;
-  color: var(--text);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  color: #f5f5f7;
+  background: #23232e;
+  border: 1px solid #44445a;
   border-radius: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
-}
-button:hover { border-color: var(--pink); }
-button:active { transform: translateY(1px); }
-button.primary {
-  background: linear-gradient(135deg, var(--pink), var(--orange));
-  border-color: transparent;
-  color: #fff;
-  font-weight: 700;
-}
-button.active {
-  background: var(--pink);
-  border-color: var(--pink);
-  color: #fff;
-  font-weight: 700;
-}
-button:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 2px;
+  padding: 8px 12px;
 }
 
-#editor {
+button { cursor: pointer; font-weight: 700; }
+button:hover { border-color: #ffd166; color: #ffd166; }
+
+#export-btn { background: #ff6b35; border-color: #ff6b35; color: #111; }
+#export-btn:hover { background: #ffd166; border-color: #ffd166; color: #111; }
+
+.export-label { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+
+#workbench {
+  flex: 1;
   display: flex;
-  align-items: stretch;
-  height: calc(100vh - 66px - 34px);
-  min-height: 560px;
+  gap: 16px;
+  padding: 16px 20px;
+  align-items: flex-start;
 }
 
-#controls {
-  width: 324px;
-  flex: 0 0 324px;
-  overflow-y: auto;
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  padding: 0 16px 24px;
-}
-#controls section { padding: 14px 0; border-bottom: 1px solid var(--line); }
-#controls h2 {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  margin: 0 -16px 10px;
-  padding: 8px 16px;
-  background: var(--panel);
-  font-family: "Anton", sans-serif;
-  font-size: 15px;
-  letter-spacing: 3px;
-  color: var(--gold);
-  border-bottom: 1px solid var(--line);
-}
-.field { display: block; margin: 10px 0; color: var(--muted); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
-.field input[type="text"], .field select {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 8px 10px;
-  font: 14px/1.4 system-ui, sans-serif;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--text);
-  background: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-.field input[type="range"] { width: 100%; accent-color: var(--pink); }
-.field output { color: var(--text); font-size: 12px; text-transform: none; letter-spacing: 0; }
-.check { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--text); }
-.check input { accent-color: var(--pink); width: 16px; height: 16px; }
-.pills { display: flex; flex-wrap: wrap; gap: 6px; }
-.pills button { padding: 6px 10px; font-size: 12px; border-radius: 999px; }
-.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-.row { display: flex; gap: 8px; margin-top: 10px; }
-.row.wrap { flex-wrap: wrap; }
-
-#stage-col {
+#stage-wrap {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 10px;
-  padding: 18px;
-  background:
-    radial-gradient(900px 500px at 70% -10%, rgba(255, 46, 136, 0.22), transparent 60%),
-    radial-gradient(700px 420px at 10% 110%, rgba(255, 138, 42, 0.18), transparent 60%),
-    var(--ink);
 }
-#stage-wrap {
-  position: relative;
-  max-width: 100%;
-  max-height: calc(100% - 30px);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line);
-  border-radius: 6px;
-  overflow: hidden;
-}
-#stage { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; cursor: grab; touch-action: none; background: var(--ink); }
-#stage.dragging { cursor: grabbing; }
-#tag-editor {
-  position: absolute;
-  z-index: 5;
-  padding: 4px 8px;
-  font: 700 13px/1.3 system-ui, sans-serif;
-  color: #111;
-  background: #fff;
-  border: 2px solid var(--pink);
-  border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-}
-#stage-hint { margin: 0; color: var(--muted); font-size: 12px; text-align: center; }
 
-#foot {
-  height: 34px;
+#stage {
+  background: #0d0d12;
+  border: 2px solid #44445a;
+  border-radius: 6px;
+  cursor: grab;
+  max-width: 100%;
+}
+
+#stage:active { cursor: grabbing; }
+
+#hint { color: #b9b9c9; font-size: 12px; margin: 0; text-align: center; }
+
+#controls {
+  width: 300px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.group {
+  background: #17171f;
+  border: 1px solid #2c2c3a;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.group h2 {
+  margin: 0 0 10px;
+  font-family: 'Anton', "Arial Black", sans-serif;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  color: #ffd166;
+  text-transform: uppercase;
+}
+
+.group label { display: block; margin: 8px 0 4px; font-weight: 600; }
+.group label.check { display: flex; align-items: center; gap: 8px; }
+.group select, .group input[type="text"], .group input[type="range"] { width: 100%; }
+
+#layout-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.layout-btn { flex: 1 1 45%; padding: 7px 6px; font-size: 12px; }
+.layout-btn.active { background: #ffd166; border-color: #ffd166; color: #111; }
+
+#upload-btn { width: 100%; }
+
+#panel-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+.panel-row {
   display: flex;
   align-items: center;
-  padding: 0 18px;
-  font-size: 12px;
-  color: var(--muted);
-  background: var(--panel);
-  border-top: 1px solid var(--line);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #2c2c3a;
+  border-radius: 8px;
+  cursor: pointer;
 }
 
-::selection { background: var(--pink); color: #fff; }
+.panel-row.selected { border-color: #ffd166; background: #23232e; }
 
-/* Shot mode: the runner's viewport IS the shot. CSS alone hides the editor
-   chrome — main.js never sets an inline display:none on the editor (that
-   used to hide the canvas too and produced blank screenshots). */
+.panel-thumb {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: #ff6b35;
+  color: #111;
+  font-weight: 800;
+  border-radius: 50%;
+}
+
+.panel-name { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel-photo { width: 96px; flex: none; padding: 4px 6px; font-size: 12px; }
+
+.note p { margin: 0; font-size: 12px; color: #b9b9c9; }
+
+/* Floating role-tag editor, positioned over the chip it renames. */
+#tag-editor {
+  position: fixed;
+  z-index: 50;
+  background: #111;
+  border: 2px solid #ffd166;
+  border-radius: 8px;
+  padding: 4px;
+}
+
+#tag-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Screenshot mode: hide the editor chrome; the canvas fills the viewport.
+   The editor element itself is NEVER display:none — hiding it blanked
+   cover screenshots in an earlier round. */
 body.shot-mode #topbar,
 body.shot-mode #controls,
-body.shot-mode #foot,
-body.shot-mode #stage-hint { display: none; }
-body.shot-mode #editor { height: 100vh; min-height: 0; }
-body.shot-mode #stage-col { padding: 0; }
-body.shot-mode #stage-wrap { max-width: none; max-height: none; box-shadow: none; border-radius: 0; }
-body.shot-mode #stage { max-width: 100vw; max-height: 100vh; }
+body.shot-mode #hint { display: none; }
+body.shot-mode #workbench { padding: 0; }
+body.shot-mode #stage-wrap { width: 100vw; height: 100vh; }
+body.shot-mode #stage { border: none; border-radius: 0; max-width: none; }
 
-@media (max-width: 900px) {
-  #editor { flex-direction: column; height: auto; }
-  #controls { width: 100%; flex: none; border-right: 0; border-bottom: 1px solid var(--line); max-height: 46vh; }
-  #stage-col { min-height: 60vh; }
+@media (max-width: 860px) {
+  #workbench { flex-direction: column; }
+  #controls { width: 100%; }
 }
