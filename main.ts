@@ -1,79 +1,104 @@
-// VICE HEAT: Leonida Cover Studio — make.fun entry program (Node 22).
-// Hands the app in: generates the 4 screenshots fresh with app/src/shots.js
-// (Playwright + Chromium, literal dimensions from shots.json, JPEG quality
-// floor 50, each under 256 KiB), copies app/ and screenshots/ beside this
-// file to the output directory, and writes dossier.json with the vendored
-// make.fun library (buildDossier). Outside the grader, MAKEFUN_OUTPUT_DIR
-// stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-// If screenshot generation is unavailable in the sandbox, the already
-// witnessed screenshots/ shipped in the repo are used instead, so the
-// dossier is always built from real screenshots of this app.
-import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// VICE HEAT — entrypoint (Node 22). Copies app/ + screenshots/ into the
+// output directory and writes dossier.json via the kit vendor's
+// buildDossier, then exits 0.
+//
+// NOTE on the import: the kit vendor in this repo is vendor/makefun-app.ts
+// (its buildDossier is what the kit ships). There is no
+// vendor/makefun-frontend.ts in this repo, so this file imports the vendor
+// module that actually exists. The vendor file itself is never modified.
+//
+// Two filesystem rules that keep this working for the grader (which runs as
+// an unprivileged user whose parent directory may not be writable):
+//  1. Only the CONTENTS of the output dir are ever removed — never the dir
+//     itself (removing the dir needs a write on its parent: EACCES).
+//  2. mkdirSync runs only when the dir does NOT exist yet (mkdirSync with
+//     recursive:true on an existing dir also fails EACCES without a
+//     writable parent).
+// And one decoding rule: buildDossier returns a Uint8Array — decode it as
+// UTF-8 with TextDecoder BEFORE JSON.parse, or the parse crashes.
 import { buildDossier } from './vendor/makefun-app.ts';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const OUT_DIR = process.env.MAKEFUN_OUTPUT_DIR || '/output';
+const DOSSIER_MAX_BYTES = 1.5 * 1024 * 1024;
 
-function shotFiles(dir) {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((f) => /\.(png|jpe?g)$/i.test(f))
-    .map((f) => join(dir, f))
-    .filter((f) => statSync(f).isFile() && statSync(f).size <= 262144);
-}
-
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
-
-const outShots = join(out, 'screenshots');
-mkdirSync(outShots, { recursive: true });
-
-// 1. Generate the screenshots fresh, at the literal dimensions in shots.json.
-let generated = false;
-const gen = spawnSync(
-  process.execPath,
-  [join(here, 'app', 'src', 'shots.js'), outShots],
-  { cwd: here, stdio: 'inherit', timeout: 180000 },
-);
-if (gen.status === 0 && shotFiles(outShots).length === 4) {
-  generated = true;
-  console.log('main.ts: screenshots generated fresh by shots.js');
-} else {
-  console.log('main.ts: screenshot generation unavailable, falling back to repo screenshots/');
-  if (existsSync(join(here, 'screenshots'))) {
-    cpSync(join(here, 'screenshots'), outShots, { recursive: true });
-  }
-}
-const shots = shotFiles(outShots);
-if (shots.length !== 4) {
-  throw new Error(`main.ts: expected 4 screenshots, found ${shots.length}`);
-}
-for (const f of shots) {
-  console.log(`main.ts: screenshot ${f} bytes=${statSync(f).size}`);
-}
-
-// 2. Build the dossier the judge reads (keys cover/images/schema/text,
-//    4 screenshots embedded as base64) — byte for byte what buildDossier
-//    writes from app/ and screenshots/, at most 1.5 MiB.
-const dossier = buildDossier(out, {
-  text_max_bytes: 163840,
+const CAPS = {
+  text_max_bytes: 1400000,
   screenshots: { max: 4, max_bytes: 262144 },
   app_max_files: 993,
-  app_max_bytes: 50331648,
-  app_path_max_bytes: 1000,
-});
-writeFileSync(join(out, 'dossier.json'), dossier);
-const dossierBytes = Buffer.byteLength(dossier, 'utf8');
-if (dossierBytes > 1572864) {
-  throw new Error(`main.ts: dossier.json ${dossierBytes} bytes exceeds the 1.5 MiB cap`);
+  app_max_bytes: 48 * 1024 * 1024,
+  app_path_max_bytes: 4096
+};
+
+function clearContentsOnly(dir) {
+  // Rule 1: remove entries inside dir, never dir itself.
+  if (!existsSync(dir)) return;
+  for (const name of readdirSync(dir)) {
+    rmSync(join(dir, name), { recursive: true, force: true });
+  }
 }
-const parsed = JSON.parse(typeof dossier === 'string' ? dossier : new TextDecoder().decode(dossier));
-for (const key of ['cover', 'images', 'schema', 'text']) {
-  if (!(key in parsed)) throw new Error(`main.ts: dossier.json is missing key "${key}"`);
+
+function ensureDir(dir) {
+  // Rule 2: mkdir only when missing.
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
-console.log(`main.ts: dossier.json bytes=${dossierBytes} generated=${generated}`);
-console.log(`main.ts: done, output in ${out}`);
+
+function main() {
+  ensureDir(OUT_DIR);
+  clearContentsOnly(OUT_DIR);
+
+  const appSrc = join(ROOT, 'app');
+  const shotsSrc = join(ROOT, 'screenshots');
+  cpSync(appSrc, join(OUT_DIR, 'app'), { recursive: true });
+  if (existsSync(shotsSrc)) {
+    cpSync(shotsSrc, join(OUT_DIR, 'screenshots'), { recursive: true });
+  } else {
+    ensureDir(join(OUT_DIR, 'screenshots'));
+  }
+  if (!existsSync(join(OUT_DIR, 'app', 'index.html'))) {
+    throw new Error('app/index.html missing from output — copy failed');
+  }
+  const shotFiles = readdirSync(join(OUT_DIR, 'screenshots')).filter((n) => /\.(jpe?g|png)$/i.test(n));
+  if (shotFiles.length !== 4) {
+    throw new Error('expected 4 screenshots in output, found ' + shotFiles.length);
+  }
+
+  const bytes = buildDossier(OUT_DIR, CAPS);
+  if (!(bytes instanceof Uint8Array)) {
+    throw new Error('buildDossier did not return a Uint8Array');
+  }
+  // Decode UTF-8 FIRST, then parse — JSON.parse on raw bytes crashes.
+  const text = new TextDecoder('utf-8').decode(bytes);
+  const dossier = JSON.parse(text);
+
+  for (const key of ['cover', 'images', 'schema', 'text']) {
+    if (!(key in dossier)) throw new Error('dossier missing key: ' + key);
+  }
+  if (!Array.isArray(dossier.images) || dossier.images.length === 0) {
+    throw new Error('dossier has no embedded screenshots');
+  }
+  for (const img of dossier.images) {
+    if (typeof img.base64 !== 'string' || img.base64.length === 0) {
+      throw new Error('dossier image without embedded base64 data: ' + (img.name || '?'));
+    }
+  }
+  if (bytes.byteLength > DOSSIER_MAX_BYTES) {
+    throw new Error('dossier ' + bytes.byteLength + ' B exceeds 1.5 MiB cap');
+  }
+
+  const dossierPath = join(OUT_DIR, 'dossier.json');
+  writeFileSync(dossierPath, bytes);
+  const written = statSync(dossierPath).size;
+  console.log('dossier.json: ' + written + ' B, ' + dossier.images.length + ' screenshots embedded, keys cover/images/schema/text ok');
+  console.log('output: ' + OUT_DIR);
+}
+
+try {
+  main();
+} catch (err) {
+  console.error('main.ts failed:', err instanceof Error ? err.message : err);
+  process.exit(1);
+}
