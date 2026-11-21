@@ -1,471 +1,393 @@
-// VICE HEAT: Leonida Cover Studio — editor.
-// Wires the controls in index.html to the renderer in cover.js, handles uploads,
-// drag-crop / zoom per panel, editable role tags, Shuffle / Reset and 1-click
-// export in 4 post sizes. Also serves the ?shot=cover / ?shot=editor modes the
-// screenshot maker uses: in cover mode the page is just the cover, fullscreen.
-import {
-  SAMPLES, GRADES, GRADE_IDS, LAYOUTS, TITLES,
-  layoutPanels, renderCover, clampCrop,
-} from './cover.js';
+// VICE HEAT — editor: controls, drag crop/zoom, role-tag renaming, export.
+//
+// FIX 1 (blank screenshots): applyShotParams NEVER hides the editor with an
+// inline style. In shot mode it only adds the `shot-mode` class (CSS hides
+// the chrome) and sizes the preview to the runner viewport BEFORE fitStage,
+// so the canvas bitmap is exactly the shot size. In editor mode no class is
+// added and every control stays visible.
+//
+// FIX 2 (role-tag rename never opened): the chip rectangles come from ONE
+// place — ViceHeat.getChipRects in cover.js. main.js keeps no second copy of
+// the formula, and the click hit-test uses the LIVE scale from
+// canvas.getBoundingClientRect() at click time, never a stored previewScale.
+(function () {
+  'use strict';
 
-const $ = (id) => document.getElementById(id);
-const params = new URLSearchParams(location.search);
-const SHOT = params.get('shot') || '';
+  var VH = window.ViceHeat;
+  var $ = function (id) { return document.getElementById(id); };
 
-function defaultPanels() {
-  return SAMPLES.map((s) => ({
-    sampleId: s.id, img: null, crop: { zoom: 1, ox: 0, oy: 0 }, role: s.role,
-  }));
-}
+  var state = VH.defaultState();
+  var selected = 0;
+  var canvas = $('stage');
+  var wrap = $('stage-wrap');
+  var tagEditor = $('tag-editor');
 
-const state = {
-  layout: 'grid9',
-  grade: 'sunset',
-  intensity: 70,
-  title: 'VICE HEAT',
-  subtitle: 'LEONIDA',
-  tagline: 'Welcome to Leonida',
-  quote: '"Partners in crime."',
-  titlePos: 'top',
-  outline: true,
-  outlineWidth: 6,
-  shadow: 12,
-  panels: defaultPanels(),
-};
+  // --- render + fit ----------------------------------------------------------
+  function render() {
+    VH.renderCover(canvas, state, { onReady: render });
+    syncPanelUI();
+  }
 
-let selectedPanel = 0;
-let laid = null; // last layout result for the preview canvas
-let previewScale = 1; // preview-canvas px per cover px
-const canvas = $('cover');
-const ctx = canvas.getContext('2d');
+  function fitStage() {
+    // Canvas bitmap = preview size (1280x720 in the editor; the runner
+    // viewport in shot mode). CSS scales it into the stage column.
+    canvas.width = state.previewW;
+    canvas.height = state.previewH;
+    render();
+  }
 
-function loadImage(src) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-async function loadSamples() {
-  const jobs = SAMPLES.map(async (s, i) => {
-    const img = await loadImage(s.file);
-    state.panels[i].img = img;
-  });
-  await Promise.all(jobs);
-}
-
-function applyShotParams() {
-  const layout = params.get('layout');
-  if (layout && LAYOUTS.some((l) => l.id === layout)) state.layout = layout;
-  const photo = params.get('photo');
-  if (photo) {
-    const idx = SAMPLES.findIndex((s) => s.id === photo);
-    if (idx >= 0) {
-      // Rotate the sample order so the requested photo leads the cover.
-      const order = SAMPLES.map((_, i) => (idx + i) % SAMPLES.length);
-      state.panels = order.map((si, i) => ({
-        sampleId: SAMPLES[si].id,
-        img: state.panels[si] ? state.panels[si].img : null,
-        crop: { zoom: 1, ox: 0, oy: 0 },
-        role: SAMPLES[si].role,
-      }));
+  // --- shot params (?shot=cover|editor&layout=..&grade=..&title=..) ---------
+  function applyShotParams() {
+    var q = new URLSearchParams(window.location.search);
+    var shot = q.get('shot');
+    var layout = q.get('layout');
+    var grade = q.get('grade');
+    if (layout && VH.LAYOUTS[layout]) state.layout = layout;
+    if (grade && VH.GRADES[grade]) state.grade = grade;
+    if (q.get('title')) state.title = q.get('title');
+    if (q.get('subtitle')) state.subtitle = q.get('subtitle');
+    if (q.get('tagline')) state.tagline = q.get('tagline');
+    if (q.get('intensity') !== null) state.intensity = Math.max(0, Math.min(100, parseInt(q.get('intensity'), 10) || 0));
+    if (q.get('titlepos')) state.titlePos = q.get('titlepos');
+    if (shot === 'cover') {
+      // Cover shot: chrome off via class, bitmap = viewport, 1:1.
+      document.body.classList.add('shot-mode');
+      state.previewW = window.innerWidth;
+      state.previewH = window.innerHeight;
     }
+    // shot === 'editor': deliberately NO shot-mode class — controls stay.
+    syncControls();
+    fitStage();
   }
-  const caption = params.get('caption');
-  if (caption) state.title = caption;
-  const grade = params.get('grade');
-  if (grade && GRADES[grade]) state.grade = grade;
-}
 
-// Render the preview (editor) or the fullscreen cover (shot mode).
-function render() {
-  if (SHOT === 'cover') {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    canvas.width = w;
-    canvas.height = h;
-    previewScale = 1;
-    laid = renderCover(ctx, w, h, state);
-  } else {
-    canvas.width = 1080;
-    canvas.height = 1080;
-    previewScale = canvas.width / 1080;
-    laid = renderCover(ctx, 1080, 1080, state);
-  }
-  drawSelection();
-}
-
-function drawSelection() {
-  if (SHOT === 'cover' || !laid) return;
-  const p = laid.panels[selectedPanel];
-  if (!p) return;
-  ctx.save();
-  ctx.strokeStyle = '#ffd319';
-  ctx.lineWidth = 4;
-  ctx.setLineDash([14, 8]);
-  ctx.strokeRect(p.x + 2, p.y + 2, p.w - 4, p.h - 4);
-  ctx.restore();
-}
-
-// ---- controls ----
-function buildLayoutButtons() {
-  const box = $('layoutBtns');
-  box.innerHTML = '';
-  for (const l of LAYOUTS) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = l.name;
-    b.dataset.layout = l.id;
-    b.className = 'pill' + (state.layout === l.id ? ' active' : '');
-    b.addEventListener('click', () => {
-      state.layout = l.id;
-      buildLayoutButtons();
-      render();
-    });
-    box.appendChild(b);
-  }
-}
-
-function buildGradeButtons() {
-  const box = $('gradeBtns');
-  box.innerHTML = '';
-  for (const id of GRADE_IDS) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = GRADES[id].name;
-    b.dataset.grade = id;
-    b.className = 'pill' + (state.grade === id ? ' active' : '');
-    b.addEventListener('click', () => {
-      state.grade = id;
-      buildGradeButtons();
-      render();
-    });
-    box.appendChild(b);
-  }
-}
-
-function buildPanelList() {
-  const list = $('panelList');
-  list.innerHTML = '';
-  state.panels.forEach((panel, i) => {
-    const row = document.createElement('div');
-    row.className = 'panel-row' + (selectedPanel === i ? ' selected' : '');
-    row.addEventListener('click', () => { selectedPanel = i; buildPanelList(); render(); });
-
-    const thumb = document.createElement('img');
-    thumb.className = 'thumb';
-    thumb.alt = SAMPLES.find((s) => s.id === panel.sampleId)?.label || 'panel';
-    thumb.src = panel.img ? panel.img.src : '';
-    row.appendChild(thumb);
-
-    const meta = document.createElement('div');
-    meta.className = 'panel-meta';
-    const name = document.createElement('div');
-    name.className = 'panel-name';
-    name.textContent = `${i + 1}. ${SAMPLES.find((s) => s.id === panel.sampleId)?.label || 'Photo'}`;
-    meta.appendChild(name);
-
-    // Role tag: click the label -> a floating input appears -> Enter saves.
-    const roleBtn = document.createElement('button');
-    roleBtn.type = 'button';
-    roleBtn.className = 'role-tag';
-    roleBtn.textContent = panel.role;
-    roleBtn.title = 'Click to edit the role tag';
-    roleBtn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      openRoleEditor(roleBtn, i);
-    });
-    meta.appendChild(roleBtn);
-    row.appendChild(meta);
-
-    const up = document.createElement('label');
-    up.className = 'upload-btn';
-    up.textContent = 'Upload';
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.className = 'panel-upload';
-    input.dataset.panel = String(i);
-    input.addEventListener('change', async () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      const img = await loadImage(url);
-      if (img) {
-        state.panels[i].img = img;
-        state.panels[i].sampleId = 'custom';
-        state.panels[i].crop = { zoom: 1, ox: 0, oy: 0 };
-        selectedPanel = i;
-        buildPanelList();
+  // --- controls ---------------------------------------------------------------
+  function buildPills() {
+    var lp = $('layout-pills');
+    VH.LAYOUT_IDS.forEach(function (id) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = VH.LAYOUTS[id].name;
+      b.dataset.layout = id;
+      b.addEventListener('click', function () {
+        state.layout = id;
+        if (selected >= VH.LAYOUTS[id].panels) selected = 0;
+        buildPanelSelect();
+        syncControls();
         render();
-      }
+      });
+      lp.appendChild(b);
     });
-    up.appendChild(input);
-    row.appendChild(up);
-    list.appendChild(row);
-  });
-}
+    var gp = $('grade-pills');
+    VH.GRADE_IDS.forEach(function (id) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = VH.GRADES[id].name;
+      b.dataset.grade = id;
+      b.addEventListener('click', function () {
+        state.grade = id;
+        syncControls();
+        render();
+      });
+      gp.appendChild(b);
+    });
+  }
 
-// Floating role-tag editor: an input placed over the label; Enter saves.
-function openRoleEditor(anchor, index) {
-  closeRoleEditor(true);
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'role-input';
-  input.value = state.panels[index].role;
-  input.maxLength = 28;
-  input.setAttribute('data-role-editor', '1');
-  anchor.replaceWith(input);
-  input.focus();
-  input.select();
-  let saved = false;
-  const save = () => {
-    if (saved) return; // Enter fires save, then blur fires again on removal.
-    saved = true;
-    const v = input.value.trim().toUpperCase();
-    if (v) state.panels[index].role = v;
-    closeRoleEditor(false);
-    buildPanelList();
+  function buildPanelSelect() {
+    var sel = $('in-panel');
+    sel.innerHTML = '';
+    var n = VH.LAYOUTS[state.layout].panels;
+    for (var i = 0; i < n; i++) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = 'Panel ' + (i + 1) + ' — ' + (state.panels[i].tag || '');
+      sel.appendChild(o);
+    }
+    sel.value = String(selected);
+  }
+
+  function syncControls() {
+    document.querySelectorAll('#layout-pills button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.layout === state.layout);
+    });
+    document.querySelectorAll('#grade-pills button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.grade === state.grade);
+    });
+    $('in-title').value = state.title;
+    $('in-subtitle').value = state.subtitle;
+    $('in-tagline').value = state.tagline;
+    $('in-quote').value = state.quote;
+    $('in-titlepos').value = state.titlePos;
+    $('in-outline').checked = !!state.outline;
+    $('in-outline-px').value = String(state.outlinePx);
+    $('out-outline-px').textContent = state.outlinePx + ' px';
+    $('in-shadow').value = String(state.shadowPx);
+    $('out-shadow').textContent = state.shadowPx + ' px';
+    $('in-intensity').value = String(state.intensity);
+    $('out-intensity').textContent = state.intensity + '%';
+    buildPanelSelect();
+  }
+
+  function syncPanelUI() {
+    var panel = state.panels[selected];
+    if (!panel) return;
+    var sel = $('in-panel');
+    if (sel.value !== String(selected)) sel.value = String(selected);
+    if (document.activeElement !== $('in-tag')) $('in-tag').value = panel.tag || '';
+    $('in-zoom').value = String(Math.round(panel.zoom * 100));
+    $('out-zoom').textContent = panel.zoom.toFixed(2) + '\u00D7';
+    $('panel-hint').textContent = 'Panel ' + (selected + 1) + ' of ' +
+      VH.LAYOUTS[state.layout].panels + ' \u2014 ' + (panel.tag || '');
+  }
+
+  function bindControls() {
+    $('in-title').addEventListener('input', function (e) { state.title = e.target.value; render(); });
+    $('in-subtitle').addEventListener('input', function (e) { state.subtitle = e.target.value; render(); });
+    $('in-tagline').addEventListener('input', function (e) { state.tagline = e.target.value; render(); });
+    $('in-quote').addEventListener('input', function (e) { state.quote = e.target.value; render(); });
+    $('in-titlepos').addEventListener('change', function (e) { state.titlePos = e.target.value; render(); });
+    $('in-outline').addEventListener('change', function (e) { state.outline = e.target.checked; render(); });
+    $('in-outline-px').addEventListener('input', function (e) {
+      state.outlinePx = parseInt(e.target.value, 10);
+      $('out-outline-px').textContent = state.outlinePx + ' px';
+      render();
+    });
+    $('in-shadow').addEventListener('input', function (e) {
+      state.shadowPx = parseInt(e.target.value, 10);
+      $('out-shadow').textContent = state.shadowPx + ' px';
+      render();
+    });
+    $('in-intensity').addEventListener('input', function (e) {
+      state.intensity = parseInt(e.target.value, 10);
+      $('out-intensity').textContent = state.intensity + '%';
+      render();
+    });
+    $('in-panel').addEventListener('change', function (e) {
+      selected = parseInt(e.target.value, 10) || 0;
+      render();
+    });
+    $('in-tag').addEventListener('change', function (e) {
+      state.panels[selected].tag = e.target.value.trim() || state.panels[selected].tag;
+      buildPanelSelect();
+      render();
+    });
+    $('in-zoom').addEventListener('input', function (e) {
+      state.panels[selected].zoom = Math.max(1, Math.min(3, parseInt(e.target.value, 10) / 100));
+      render();
+    });
+    $('btn-upload').addEventListener('click', function () { $('file-upload').click(); });
+    $('file-upload').addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var url = URL.createObjectURL(file);
+      var panel = state.panels[selected];
+      panel.src = url;
+      panel.ox = 0; panel.oy = 0; panel.zoom = 1;
+      VH.preload(state).then(render);
+      render();
+      e.target.value = '';
+    });
+    document.querySelectorAll('[data-export]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var parts = b.dataset.export.split('x');
+        exportPNG(parseInt(parts[0], 10), parseInt(parts[1], 10));
+      });
+    });
+    $('btn-export').addEventListener('click', function () { exportPNG(1080, 1080); });
+    $('btn-export-all').addEventListener('click', exportAll);
+    $('btn-shuffle').addEventListener('click', shuffle);
+    $('btn-reset').addEventListener('click', resetAll);
+  }
+
+  // --- shuffle / reset ---------------------------------------------------------
+  function shuffleArray(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function shuffle() {
+    var srcs = state.panels.map(function (p) { return p.src; });
+    shuffleArray(srcs);
+    state.panels.forEach(function (p, i) { p.src = srcs[i]; p.ox = 0; p.oy = 0; p.zoom = 1; });
+    state.grade = VH.GRADE_IDS[Math.floor(Math.random() * VH.GRADE_IDS.length)];
+    state.title = VH.TITLES[Math.floor(Math.random() * VH.TITLES.length)];
+    VH.preload(state).then(render);
+    syncControls();
     render();
-  };
-  input.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter') save();
-    if (ev.key === 'Escape') { closeRoleEditor(false); buildPanelList(); render(); }
-    ev.stopPropagation();
-  });
-  input.addEventListener('blur', save);
-}
-
-function closeRoleEditor(cancel) {
-  const old = document.querySelector('[data-role-editor]');
-  if (old && cancel) old.remove();
-}
-
-function syncControlValues() {
-  $('titleInput').value = state.title;
-  $('subtitleInput').value = state.subtitle;
-  $('taglineInput').value = state.tagline;
-  $('quoteInput').value = state.quote;
-  $('titlePos').value = state.titlePos;
-  $('outlineToggle').checked = state.outline;
-  $('outlineWidth').value = String(state.outlineWidth);
-  $('outlineWidthVal').textContent = `${state.outlineWidth}px`;
-  $('shadowRange').value = String(state.shadow);
-  $('shadowVal').textContent = `${state.shadow}px`;
-  $('intensity').value = String(state.intensity);
-  $('intensityVal').textContent = `${state.intensity}%`;
-  $('outlineWidth').disabled = !state.outline;
-}
-
-// ---- drag crop / zoom on the preview canvas ----
-function canvasPoint(ev) {
-  const r = canvas.getBoundingClientRect();
-  return {
-    x: ((ev.clientX - r.left) / r.width) * canvas.width,
-    y: ((ev.clientY - r.top) / r.height) * canvas.height,
-  };
-}
-
-function hitPanel(pt) {
-  if (!laid) return -1;
-  for (let i = laid.panels.length - 1; i >= 0; i--) {
-    const p = laid.panels[i];
-    if (pt.x >= p.x && pt.x <= p.x + p.w && pt.y >= p.y && pt.y <= p.y + p.h) return i;
   }
-  return -1;
-}
-
-let drag = null;
-canvas.addEventListener('pointerdown', (ev) => {
-  if (SHOT === 'cover') return;
-  const pt = canvasPoint(ev);
-  const i = hitPanel(pt);
-  if (i < 0) return;
-  selectedPanel = i;
-  buildPanelList();
-  const panel = state.panels[i];
-  drag = { index: i, startX: pt.x, startY: pt.y, ox: panel.crop.ox, oy: panel.crop.oy };
-  canvas.setPointerCapture(ev.pointerId);
-  render();
-});
-canvas.addEventListener('pointermove', (ev) => {
-  if (!drag) return;
-  const pt = canvasPoint(ev);
-  const panel = state.panels[drag.index];
-  const img = panel.img;
-  const laidPanel = laid.panels[drag.index];
-  if (!img || !laidPanel) return;
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
-  const next = clampCrop(iw, ih, laidPanel.w, laidPanel.h, {
-    zoom: panel.crop.zoom,
-    ox: drag.ox + (pt.x - drag.startX),
-    oy: drag.oy + (pt.y - drag.startY),
-  });
-  panel.crop = next;
-  render();
-});
-canvas.addEventListener('pointerup', () => { drag = null; });
-canvas.addEventListener('pointercancel', () => { drag = null; });
-canvas.addEventListener('wheel', (ev) => {
-  if (SHOT === 'cover') return;
-  ev.preventDefault();
-  const pt = canvasPoint(ev);
-  const i = hitPanel(pt);
-  if (i < 0) return;
-  const panel = state.panels[i];
-  const img = panel.img;
-  const laidPanel = laid.panels[i];
-  if (!img || !laidPanel) return;
-  const zoom = Math.max(1, Math.min(4, panel.crop.zoom * Math.pow(1.0015, -ev.deltaY)));
-  const iw = img.naturalWidth || img.width;
-  const ih = img.naturalHeight || img.height;
-  panel.crop = clampCrop(iw, ih, laidPanel.w, laidPanel.h, { zoom, ox: panel.crop.ox, oy: panel.crop.oy });
-  selectedPanel = i;
-  buildPanelList();
-  render();
-}, { passive: false });
-
-// ---- shuffle / reset ----
-function shuffleAll() {
-  const order = state.panels.map((_, i) => i);
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [order[i], order[j]] = [order[j], order[i]];
+  function resetAll() {
+    var keepW = state.previewW, keepH = state.previewH;
+    state = VH.defaultState();
+    state.previewW = keepW;
+    state.previewH = keepH;
+    selected = 0;
+    hideTagEditor();
+    VH.preload(state).then(render);
+    syncControls();
+    render();
   }
-  const shuffled = order.map((si) => ({
-    sampleId: state.panels[si].sampleId,
-    img: state.panels[si].img,
-    crop: { zoom: 1, ox: 0, oy: 0 },
-    role: state.panels[si].role,
-  }));
-  state.panels = shuffled;
-  const grades = GRADE_IDS.filter((g) => g !== state.grade);
-  state.grade = grades[Math.floor(Math.random() * grades.length)];
-  const titles = TITLES.filter((t) => t !== state.title);
-  state.title = titles[Math.floor(Math.random() * titles.length)];
-  buildGradeButtons();
-  buildPanelList();
-  syncControlValues();
-  render();
-}
 
-function resetAll() {
-  const keepImgs = state.panels.map((p) => p.img);
-  state.layout = 'grid9';
-  state.grade = 'sunset';
-  state.intensity = 70;
-  state.title = 'VICE HEAT';
-  state.subtitle = 'LEONIDA';
-  state.tagline = 'Welcome to Leonida';
-  state.quote = '"Partners in crime."';
-  state.titlePos = 'top';
-  state.outline = true;
-  state.outlineWidth = 6;
-  state.shadow = 12;
-  state.panels = defaultPanels();
-  state.panels.forEach((p, i) => { p.img = keepImgs[i]; });
-  selectedPanel = 0;
-  buildLayoutButtons();
-  buildGradeButtons();
-  buildPanelList();
-  syncControlValues();
-  render();
-}
-
-// ---- export ----
-export function exportCover(w, h) {
-  const off = document.createElement('canvas');
-  off.width = w;
-  off.height = h;
-  const octx = off.getContext('2d');
-  renderCover(octx, w, h, state);
-  return off;
-}
-
-function downloadExport(w, h) {
-  const off = exportCover(w, h);
-  off.toBlob((blob) => {
-    if (!blob) return;
-    const a = document.createElement('a');
+  // --- export ------------------------------------------------------------------
+  function download(blob, name) {
+    var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `vice-heat-${w}x${h}.png`;
+    a.download = name;
+    document.body.appendChild(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  }, 'image/png');
-}
-
-function wireControls() {
-  $('titleInput').addEventListener('input', (e) => { state.title = e.target.value; render(); });
-  $('subtitleInput').addEventListener('input', (e) => { state.subtitle = e.target.value; render(); });
-  $('taglineInput').addEventListener('input', (e) => { state.tagline = e.target.value; render(); });
-  $('quoteInput').addEventListener('input', (e) => { state.quote = e.target.value; render(); });
-  $('titlePos').addEventListener('change', (e) => { state.titlePos = e.target.value; render(); });
-  $('outlineToggle').addEventListener('change', (e) => {
-    state.outline = e.target.checked;
-    $('outlineWidth').disabled = !state.outline;
-    render();
-  });
-  $('outlineWidth').addEventListener('input', (e) => {
-    state.outlineWidth = Number(e.target.value);
-    $('outlineWidthVal').textContent = `${state.outlineWidth}px`;
-    render();
-  });
-  $('shadowRange').addEventListener('input', (e) => {
-    state.shadow = Number(e.target.value);
-    $('shadowVal').textContent = `${state.shadow}px`;
-    render();
-  });
-  $('intensity').addEventListener('input', (e) => {
-    state.intensity = Number(e.target.value);
-    $('intensityVal').textContent = `${state.intensity}%`;
-    render();
-  });
-  $('shuffleBtn').addEventListener('click', shuffleAll);
-  $('resetBtn').addEventListener('click', resetAll);
-  document.querySelectorAll('[data-export]').forEach((b) => {
-    b.addEventListener('click', () => {
-      const [w, h] = b.dataset.export.split('x').map(Number);
-      downloadExport(w, h);
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  }
+  function exportPNG(w, h) {
+    return VH.preload(state).then(function () {
+      var off = document.createElement('canvas');
+      off.width = w;
+      off.height = h;
+      VH.renderCover(off, state, {});
+      return new Promise(function (resolve) {
+        off.toBlob(function (blob) {
+          if (blob) download(blob, 'vice-heat-' + w + 'x' + h + '.png');
+          resolve(!!blob);
+        }, 'image/png');
+      });
     });
+  }
+  function exportAll() {
+    var sizes = [[1080, 1080], [1080, 1350], [1920, 1080], [1080, 1920]];
+    var chain = Promise.resolve();
+    sizes.forEach(function (s, i) {
+      chain = chain.then(function () {
+        return new Promise(function (r) { setTimeout(r, i === 0 ? 0 : 350); });
+      }).then(function () { return exportPNG(s[0], s[1]); });
+    });
+    return chain;
+  }
+
+  // --- role-tag editor (FIX 2) --------------------------------------------------
+  // Hit-test against the chips cover.js actually drew — the one source of
+  // truth — with the scale measured live from the canvas box at click time.
+  function chipAt(clientX, clientY) {
+    var rect = canvas.getBoundingClientRect();
+    var sx = rect.width / canvas.width;
+    var sy = rect.height / canvas.height;
+    var cx = (clientX - rect.left) / sx;
+    var cy = (clientY - rect.top) / sy;
+    var chips = VH.getChipRects(state, canvas.width, canvas.height);
+    for (var i = 0; i < chips.length; i++) {
+      var c = chips[i];
+      if (cx >= c.x && cx <= c.x + c.w && cy >= c.y && cy <= c.y + c.h) {
+        return { chip: c, rect: rect, sx: sx, sy: sy };
+      }
+    }
+    return null;
+  }
+
+  function openTagEditor(hit) {
+    var c = hit.chip;
+    selected = c.panel;
+    tagEditor.value = c.tag;
+    tagEditor.hidden = false;
+    // Position over the chip in screen pixels (live scale, same as hit-test).
+    tagEditor.style.left = (c.x * hit.sx) + 'px';
+    tagEditor.style.top = (c.y * hit.sy - 2) + 'px';
+    tagEditor.style.width = Math.max(90, c.w * hit.sx + 30) + 'px';
+    tagEditor.style.height = Math.max(24, c.h * hit.sy) + 'px';
+    tagEditor.style.maxWidth = '340px';
+    // Focus on the next tick: focusing synchronously inside the pointerdown
+    // handler loses — the mousedown default then moves focus to the canvas
+    // (not focusable, so body), the input blurs, and the blur handler hides
+    // the editor 2 ms after it opened. Deferring focus past the default
+    // action makes the rename editor actually stay open.
+    setTimeout(function () { tagEditor.focus(); tagEditor.select(); }, 0);
+    syncPanelUI();
+  }
+  function hideTagEditor() { tagEditor.hidden = true; }
+
+  tagEditor.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      var v = tagEditor.value.trim();
+      if (v) {
+        state.panels[selected].tag = v.toUpperCase();
+        buildPanelSelect();
+      }
+      hideTagEditor();
+      render();
+    } else if (e.key === 'Escape') {
+      hideTagEditor();
+    }
+    e.stopPropagation();
   });
-}
+  tagEditor.addEventListener('blur', function () { hideTagEditor(); });
+  // Escape anywhere closes the floating tag editor (its own keydown only
+  // fires while the input has focus).
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !tagEditor.hidden) hideTagEditor();
+  });
 
-// Test / screenshot hook: the playtest and shots.js drive the app through this.
-window.__viceHeat = {
-  get state() { return state; },
-  get laid() { return laid; },
-  get ready() { return Boolean(window.__viceHeatReady); },
-  render,
-  shuffleAll,
-  resetAll,
-  exportCover,
-  setLayout(id) { state.layout = id; buildLayoutButtons(); render(); },
-  setGrade(id) { state.grade = id; buildGradeButtons(); render(); },
-  setIntensity(v) { state.intensity = v; syncControlValues(); render(); },
-};
+  // --- drag crop / zoom on the canvas -------------------------------------------
+  var drag = null;
+  canvas.addEventListener('pointerdown', function (e) {
+    var hit = chipAt(e.clientX, e.clientY);
+    if (hit) { openTagEditor(hit); return; }
+    hideTagEditor();
+    var rect = canvas.getBoundingClientRect();
+    var sx = rect.width / canvas.width;
+    var sy = rect.height / canvas.height;
+    var px = (e.clientX - rect.left) / sx;
+    var py = (e.clientY - rect.top) / sy;
+    var panel = VH.panelAt(state, px, py, canvas.width, canvas.height);
+    if (panel < 0) return;
+    selected = panel;
+    drag = { panel: panel, x: e.clientX, y: e.clientY, ox: state.panels[panel].ox, oy: state.panels[panel].oy };
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add('dragging');
+    render();
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var rect = canvas.getBoundingClientRect();
+    var sx = rect.width / canvas.width;
+    var panel = state.panels[drag.panel];
+    // Drag in canvas pixels, converted to the -1..1 pan fraction by cell size.
+    var zone = VH.panelZone(state, canvas.width, canvas.height);
+    var cells = VH.cellsFor(state.layout, zone);
+    var cell = null;
+    cells.forEach(function (c) { if (c.panel === drag.panel && !c.ghost) cell = c; });
+    if (!cell) return;
+    var dx = (e.clientX - drag.x) / sx;
+    var dy = (e.clientY - drag.y) / (rect.height / canvas.height);
+    panel.ox = Math.max(-1, Math.min(1, drag.ox - dx / Math.max(40, cell.w / 2)));
+    panel.oy = Math.max(-1, Math.min(1, drag.oy - dy / Math.max(40, cell.h / 2)));
+    render();
+  });
+  function endDrag() {
+    drag = null;
+    canvas.classList.remove('dragging');
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var rect = canvas.getBoundingClientRect();
+    var sx = rect.width / canvas.width;
+    var sy = rect.height / canvas.height;
+    var panel = VH.panelAt(state, (e.clientX - rect.left) / sx, (e.clientY - rect.top) / sy, canvas.width, canvas.height);
+    if (panel < 0) return;
+    selected = panel;
+    var p = state.panels[panel];
+    p.zoom = Math.max(1, Math.min(3, p.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    render();
+  }, { passive: false });
 
-async function init() {
-  await loadSamples();
+  // --- boot ----------------------------------------------------------------------
+  buildPills();
+  bindControls();
+  if (document.fonts && document.fonts.load) {
+    document.fonts.load('16px Anton').catch(function () {});
+  }
+  VH.preload(state).then(render);
   applyShotParams();
-  if (SHOT === 'cover') document.body.classList.add('shot-cover');
-  if (document.fonts) {
-    try {
-      await document.fonts.load('80px Anton');
-      await document.fonts.ready;
-    } catch (e) { /* Anton falls back to Arial Black; still renders */ }
-  }
-  if (SHOT !== 'cover') {
-    buildLayoutButtons();
-    buildGradeButtons();
-    buildPanelList();
-    syncControlValues();
-    wireControls();
-  }
-  render();
-  window.__viceHeatReady = true;
-}
-
-init();
+  window.addEventListener('resize', function () {
+    if (!document.body.classList.contains('shot-mode')) fitStage();
+  });
+  window.ViceHeatEditor = { get state() { return state; }, render: render, exportPNG: exportPNG, exportAll: exportAll };
+})();
