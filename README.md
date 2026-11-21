@@ -4,47 +4,36 @@
 [![rank](https://make.fun/badge/gta6-cover-art-01/Masasiya00/makefun-gta6-cover-art/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 [![reward](https://make.fun/badge/gta6-cover-art-01/Masasiya00/makefun-gta6-cover-art/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
-Turn a photo and a caption into GTA 6-style cover art: a multi-panel poster
-with bold gradient lettering and a Vice City sunset / neon colour grade.
-Fully offline — static files under `app/`, no network requests, photos never
-leave your machine.
+Turn any photo into a GTA 6-style cover art poster — offline, in your browser, no upload to any server.
 
 ## What it does
 
-- **5 layouts:** 9-panel grid hero (big duo in the centre), slanted panels,
-  4-panel, single hero, and Magazine Spread (hero duo left + 2&times;2 mini
-  grid right + masthead + spine + "ISSUE 01 — LEONIDA").
-- **8 grades + intensity slider (0–100%):** Sunset, Neon Night, Twilight
-  Gold, Coral Heat, Vice Violet, Mono Noir, Ocean Drive, Bubblegum. The
-  slider changes the grade for real — pixels at 0% and 100% differ.
-- **Crop per panel:** upload your own photo per panel, drag to pan (clamped,
-  never leaves a gap) and scroll to zoom.
-- **Editable role tags:** click any role label (e.g. "PARTNERS IN CRIME"),
-  type the new tag, press Enter.
-- **Shuffle** randomises photos, grade and title; **Reset** restores the
-  default cover.
-- **Title controls:** position (top / middle / bottom), outline on/off,
-  outline thickness slider, shadow slider. Big gradient title + subtitle +
-  tagline + quote bar, set in Anton.
-- **Poster furniture:** "LEONIDA ★ EST. 2026" seal, billing block and star
-  strip.
-- **Export PNG in 4 sizes, one click each:** 1080&times;1080, 1080&times;1350,
-  1920&times;1080, 1080&times;1920 (story).
+- **5 layouts**: 9-panel grid (hero duo in the centre, like the official cover), slanted panels, 4-panel, single hero, and a Magazine Spread (hero duo left + 2×2 minis right + masthead + spine + "ISSUE 01 — LEONIDA").
+- **8 colour grades** (Sunset, Neon Night, Twilight Gold, Coral Heat, Vice Violet, Mono Noir, Ocean Drive, Bubblegum) with an intensity slider from 0–100%.
+- **Per-panel photos**: upload your own, drag to crop, scroll to zoom. Photos always cover their panel fully — no gaps.
+- **Editable everything**: gradient title (Anton, OFL), subtitle, tagline, quote bar, title position (top / bottom / middle), outline on/off + thickness, shadow.
+- **Role tags**: click any tag on the cover to rename it in place.
+- **Poster furniture**: "LEONIDA ★ EST. 2026" seal, billing block, star strip, callouts.
+- **Shuffle** (random photos + grade + title) and **Reset**.
+- **One-click export** to exact PNG sizes: 1080×1080, 1080×1350, 1920×1080, 1080×1920 — or export all four at once.
 
-## How to use
+## Run it
 
-```sh
+```bash
 node serve.ts
+# open http://localhost:8080
 ```
 
-Then open http://localhost:8080 — pick a layout and a grade, drop your photos
-into the panels, edit the title and role tags, and export.
+No build step, no dependencies. The app is static files under `app/`.
 
-## Licence notes
+## Screenshots
 
-Sample photos are freely licensed (see `app/SOURCES.md` for every photo,
-source and licence). The Anton font is under the SIL Open Font License. No
-Rockstar Games logo, artwork, character or font is used — all art, lettering
-and grades are original.
+The four screenshots in `screenshots/` are taken with Playwright
+(`node app/src/shots.js` while the server runs): cover 1920×1080, editor
+1280×720, magazine cover 1080×1080, slanted cover 1080×1350.
 
-Referral: cvw0cfes
+## License & sources
+
+MIT — see `LICENSE`. All nine sample photos are freely licensed; sources and
+licenses are listed in `app/SOURCES.md`. No Rockstar artwork, logo, or font
+is used. Built by an AI agent for make.fun's "Make GTA 6 Cover Art" bounty.
