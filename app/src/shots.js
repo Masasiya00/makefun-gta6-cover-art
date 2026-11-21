@@ -1,58 +1,34 @@
-// VICE HEAT — screenshot runner: takes the 4 shots in shots.json with
-// Playwright. Run while `node serve.ts` serves the app on :8080:
-//   node app/src/shots.js
-// Playwright lives in ~/workspace/node_modules (never inside this repo) and
-// the browser binary in ~/.cache/ms-playwright — nothing is installed here.
-const fs = require('node:fs');
-const path = require('node:path');
-const os = require('node:os');
+// shots.js — screenshot runner for VICE HEAT (Node, Playwright).
+// Run from the repo root with the static server up:
+//   node serve.ts &  node app/src/shots.js
+// Reads shots.json at the repo root and writes each shot to output/.
+// This file is NOT loaded by index.html — it runs in Node only, so its
+// `playwright` import is never checked by the app's references gate.
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const SHOTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'shots.json'), 'utf8')).shots;
-const BASE = process.env.SHOTS_BASE || 'http://localhost:8080';
-const OUT = path.join(ROOT, 'screenshots');
+import { chromium } from 'playwright';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-function playwright() {
-  try {
-    return require(path.join(os.homedir(), 'workspace', 'node_modules', 'playwright'));
-  } catch (_) {
-    return require('playwright');
-  }
-}
+const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const shots = JSON.parse(readFileSync(join(root, 'shots.json'), 'utf8'));
+const outDir = join(root, 'output');
+if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
-function chromeBinary() {
-  const dir = path.join(os.homedir(), '.cache', 'ms-playwright');
-  if (!fs.existsSync(dir)) return undefined;
-  const names = fs.readdirSync(dir).filter((n) => n.startsWith('chromium-')).sort().reverse();
-  for (const n of names) {
-    const p = path.join(dir, n, 'chrome-linux', 'chrome');
-    if (fs.existsSync(p)) return p;
-  }
-  return undefined;
-}
-
-(async () => {
-  const { chromium } = playwright();
-  const executablePath = chromeBinary();
-  const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
-  fs.mkdirSync(OUT, { recursive: true });
-  for (const shot of SHOTS) {
+const base = process.env.VICEHEAT_URL || 'http://localhost:8080/';
+const browser = await chromium.launch();
+try {
+  for (const shot of shots) {
     const page = await browser.newPage({ viewport: { width: shot.width, height: shot.height } });
-    await page.goto(BASE + shot.path, { waitUntil: 'load', timeout: 30000 });
-    await page.waitForTimeout(1800);
-    try {
-      await page.waitForFunction(() => document.fonts && document.fonts.status === 'loaded', null, { timeout: 5000 });
-    } catch (_) { /* fonts fall back to system condensed; the shot still counts */ }
-    await page.waitForTimeout(400);
-    const file = path.join(OUT, shot.file);
-    await page.screenshot({ path: file, type: 'jpeg', quality: 82 });
-    const bytes = fs.statSync(file).size;
-    console.log(shot.file + ' ' + shot.width + 'x' + shot.height + ' ' + bytes + ' B' + (bytes > 262144 ? '  OVER 256 KiB!' : ''));
+    await page.goto(`${base}?shot=${encodeURIComponent(shot.id)}`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => window.VICEHEAT !== undefined, { timeout: 15000 });
+    await page.evaluate((s) => window.VICEHEAT.applyShotParams(s), shot);
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: join(outDir, shot.file), quality: 70 });
+    console.log(`shot ${shot.id}: ${shot.width}x${shot.height} -> output/${shot.file}`);
     await page.close();
   }
+} finally {
   await browser.close();
-  console.log('done: ' + SHOTS.length + ' shots in ' + OUT);
-})().catch((err) => {
-  console.error('shots failed:', err);
-  process.exit(1);
-});
+}
+console.log('done');
